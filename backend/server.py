@@ -97,10 +97,13 @@ def slugify(text: str) -> str:
 @api.post("/auth/login")
 async def login(body: LoginIn, request: Request, response: Response):
     email = body.email.strip().lower()
-    ident = f"{request.client.host if request.client else 'x'}:{email}"
+    fwd = request.headers.get("X-Forwarded-For", "").split(",")[0].strip()
+    ident = f"{fwd or (request.client.host if request.client else 'x')}:{email}"
     att = await db.login_attempts.find_one({"identifier": ident})
-    if att and att.get("count", 0) >= 5 and datetime.fromisoformat(att["last"]) > datetime.now(timezone.utc) - timedelta(minutes=15):
-        raise HTTPException(429, "Too many attempts. Try again in 15 minutes.")
+    if att and att.get("count", 0) >= 5:
+        if datetime.fromisoformat(att["last"]) > datetime.now(timezone.utc) - timedelta(minutes=15):
+            raise HTTPException(429, "Too many attempts. Try again in 15 minutes.")
+        await db.login_attempts.delete_many({"identifier": ident})
     user = await db.users.find_one({"email": email})
     if not user or not verify_password(body.password, user["password_hash"]):
         await db.login_attempts.update_one({"identifier": ident}, {"$inc": {"count": 1}, "$set": {"last": now_iso()}}, upsert=True)
@@ -215,16 +218,16 @@ async def project_search(slug: str, q: str = Query(min_length=1, max_length=200)
 
 @api.get("/projects/{slug}/link")
 async def project_link(slug: str, path: str):
-    root = await _project_root(slug)
+    path = _scoped(await _project_root(slug), path)
     c = await dbx.client(db)
-    return {"url": await dbx.temp_link(c, _scoped(root, path))}
+    return {"url": await dbx.temp_link(c, path)}
 
 
 @api.get("/projects/{slug}/thumb")
 async def project_thumb(slug: str, path: str):
-    root = await _project_root(slug)
+    path = _scoped(await _project_root(slug), path)
     c = await dbx.client(db)
-    data = await dbx.thumbnail(c, _scoped(root, path))
+    data = await dbx.thumbnail(c, path)
     return Response(content=data, media_type="image/jpeg", headers={"Cache-Control": "public, max-age=3600"})
 
 

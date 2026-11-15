@@ -1,0 +1,44 @@
+{
+  "summary": "First full run. Backend: 27 pytest cases (auth, admin route protection, project CRUD, slug uniqueness, files 409/404/403 scoping, search, dropbox not-configured states, oauth callback redirect) - 25 pass, 2 fail (brute-force lockout ineffective behind ingress; /link and /thumb do Dropbox client() before scope check). Frontend: home hero/nav/typewriter/category row/coverflow (5 slides, Jasmin centered, prev/next/dots), worlds filter + clear, active card -> /p/jasmins-journey with 'No folder linked yet', search 'wba' + ENTER -> /search?q=wba with WBA + files-unavailable note, Projects bento + filter chips, Archive (5 rows), Studio, Contact, bell popover, help dialog, profile -> /admin/login, wrong pw error, login, Dropbox card 'App keys missing' + redirect URI, create/edit/delete TEST_ project via dialog, browse button disabled, session persists on reload, logout -> redirects to login, mobile 390 - all work. One mobile overflow issue on PageShell pages.",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "POST /api/auth/login", "issue": "Brute-force lockout ineffective: identifier = request.client.host which is the ingress pod IP (observed 10.79.128.66 and 10.79.128.69 alternating for same client). 6 bad attempts split 3/3 across two identifiers -> 6th attempt returned 401 not 429. Fix: use first IP from X-Forwarded-For (fallback client.host), or key lockout on email only.", "priority": "HIGH"}
+    ],
+    "minor": [
+      {"endpoint": "GET /api/projects/{slug}/link and /thumb", "issue": "await dbx.client(db) is called BEFORE _scoped(root, path), so a path outside the project folder returns 503 (not configured) / would make Dropbox client setup before rejecting. /files does scope check first correctly. Move _scoped() above client() in project_link and project_thumb."},
+      {"endpoint": "POST /api/auth/login", "issue": "Lockout window never truly resets: after 15 min count stays >=5, so a single further failure updates 'last' and re-locks immediately. Reset count when the window has expired."},
+      {"endpoint": "config", "issue": "backend FRONTEND_URL (adbd865d-...preview.emergentagent.com) differs from frontend REACT_APP_BACKEND_URL (all-is-good--31c91em5.preview.emergentagent.com). Dropbox redirect URI shown in admin and post-OAuth redirect use the adbd865d host, and CORS allow_origins only lists that host. Both hosts respond, but make sure the redirect URI registered in the Dropbox app matches the host users actually use."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "PageShell (Projects/Archive/Studio/Contact/Search/Admin)", "issue": "Horizontal overflow on mobile 390px: scrollWidth=429. Decorative blob 'absolute -top-40 right-[-10%] w-[620px]' extends past viewport. Fix: add overflow-x-clip (not overflow-hidden, which would break sticky nav) on the PageShell root, or clip the blob in its own overflow-hidden absolute container.", "selector": "PageShell root div > div.pointer-events-none", "priority": "MEDIUM"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Search results / Projects cards", "issues": ["Card title/subtitle overlays cover art that already contains baked-in title text (e.g. WBA card) - text competes visually; consider stronger bottom gradient."]},
+      {"screen": "Home mobile", "issues": ["Typewriter placeholder truncated ('All is good. Sear') at 390px - acceptable but could use smaller font size on mobile."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_cooked_world_api.py", "/app/test_reports/pytest/pytest_results.xml"],
+  "action_items": [
+    "Fix login lockout identifier to use X-Forwarded-For client IP (or email-only key) so lockout works behind ingress; reset count after window expiry",
+    "In project_link and project_thumb, call _scoped(root, path) before dbx.client(db)",
+    "Fix mobile horizontal overflow from PageShell decorative blob (overflow-x-clip on root)",
+    "Align FRONTEND_URL with the actual public host used (affects Dropbox redirect URI, post-OAuth redirect and CORS)"
+  ],
+  "critical_code_review_comments": [
+    "auth.py/server.py: bcrypt $2b$ hash confirmed, httpOnly+Secure+SameSite=None cookie set, CORS explicit origin with credentials - OK. seed() inserts admin only if missing and never updates password - OK.",
+    "Lockout keyed on proxy IP (see backend critical).",
+    "project_search does not validate category/q beyond length - fine; global_search swallows per-project Dropbox errors - OK.",
+    "Project delete uses native window.confirm instead of a shadcn AlertDialog - inconsistent with design system.",
+    "Admin list rows don't show subtitle, so edit success is only visible via toast/API."
+  ],
+  "updated_files": ["/app/backend/tests/test_cooked_world_api.py"],
+  "success_rate": {"backend": "93% (25/27)", "frontend": "95% (all flows pass; 1 mobile overflow bug)"},
+  "seed_data_creation": "None persisted. Created TEST_ projects (via API and UI) and deleted them by id; verified 0 TEST_ projects remain. Removed TEST_ lockout login_attempts rows.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Use REACT_APP_BACKEND_URL host (all-is-good--31c91em5). Run: cd /app/backend && REACT_APP_BACKEND_URL=... pytest tests/test_cooked_world_api.py (pytest.ini uses xdist). Expected failures until fixed: test_bruteforce_lockout, test_scope_check (link/thumb ordering). Dropbox keys not configured - real browsing untested. Delete uses window.confirm (handle page dialog in Playwright).",
+  "rca of the issue": "Lockout: request.client.host behind K8s ingress = ingress pod IP; multiple ingress pods => attempts counted under different identifiers. Scope ordering: project_link/project_thumb await dbx.client() before _scoped(); client() raises 503 when keys missing, masking the 403."
+}

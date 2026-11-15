@@ -1,7 +1,7 @@
 import { Nav } from "@/components/Nav";
 
 export const PageShell = ({ eyebrow, title, children, testid }) => (
-  <div className="min-h-screen bg-[#fff8f0] relative" data-testid={testid}>
+  <div className="min-h-screen bg-[#fff8f0] relative overflow-x-clip" data-testid={testid}>
     <div className="pointer-events-none absolute -top-40 right-[-10%] w-[620px] h-[620px] rounded-full bg-[#ff5a3c] opacity-[0.12] blur-3xl" />
     <div className="sticky top-0 z-30"><Nav tone="solid" /></div>
     <main className="relative max-w-[1320px] mx-auto px-5 sm:px-10 pt-14 pb-24">
