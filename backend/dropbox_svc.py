@@ -44,7 +44,10 @@ async def start_url(db) -> str:
               "token_access_type": "offline", "scope": SCOPES, "state": state,
               "redirect_uri": redirect_uri()}
     url = "https://www.dropbox.com/oauth2/authorize?" + urlencode(params)
-    r = await asyncio.to_thread(requests.get, url, allow_redirects=False, timeout=15)
+    try:
+        r = await asyncio.to_thread(requests.get, url, allow_redirects=False, timeout=15)
+    except requests.RequestException:
+        raise HTTPException(502, "Could not reach Dropbox. Please try again.")
     loc = r.headers.get("location", "")
     if "authorize_error" in loc:
         detail = parse_qs(urlparse(loc).query).get("error_detail", ["Dropbox rejected the request"])[0]

@@ -1,0 +1,19 @@
+{
+  "summary": "Verified Dropbox OAuth preflight fix. GET /api/admin/dropbox/oauth/start (admin bearer) returns 400 with detail 'Dropbox says: Invalid redirect_uri: \"https://all-is-good--31c91em5.preview.emergentagent.com/api/dropbox/oauth/callback\": It must exactly match...' and no url. Unauthenticated -> 401/403. UI: login via /admin/login, clicking dropbox-connect-button keeps user on /admin and shows sonner error toast with the Dropbox message. Regression: admin panel loads with 5 projects, Dropbox card shows 'Not connected' and correct redirect URI; home page renders.",
+  "backend_issues": {"critical": [], "minor": [
+    {"endpoint": "/api/admin/dropbox/oauth/start", "issue": "requests.get preflight to dropbox.com is not wrapped in try/except; a network error/timeout would surface as 500 instead of a friendly 502. Also, the oauth_state is inserted before the preflight, so a failed preflight leaves an orphan state behind (the TTL index on expires_at cleans it up, so the impact is low)."}
+  ]},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": ["/app/backend/tests/test_dropbox_oauth_preflight.py", "/app/test_reports/pytest/pytest_iter2.xml"],
+  "action_items": [
+    "User must add https://all-is-good--31c91em5.preview.emergentagent.com/api/dropbox/oauth/callback to the Redirect URIs in the Dropbox App Console (OAuth 2 section). This is a user-side config step.",
+    "Optional: wrap the preflight requests.get in try/except requests.RequestException -> HTTPException(502)"
+  ],
+  "critical_code_review_comments": ["Preflight network errors aren't handled (would return 500)"],
+  "updated_files": ["/app/backend/tests/test_dropbox_oauth_preflight.py"],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "seed_data_creation": "None",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Login testids: admin-login-email-input / admin-login-password-input / admin-login-submit-button. Successful Dropbox OAuth can't be tested until the user registers the redirect URI."
+}
