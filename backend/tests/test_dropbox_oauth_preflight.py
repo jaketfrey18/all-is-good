@@ -16,6 +16,7 @@ def token():
     return r.json()["token"]
 
 
+@pytest.mark.skip(reason="Obsolete since iteration 3: redirect URI now registered, start returns 200 (see test_dropbox_oauth_scopes.py)")
 def test_oauth_start_returns_400_dropbox_says(token):
     r = requests.get(f"{BASE_URL}/api/admin/dropbox/oauth/start",
                      headers={"Authorization": f"Bearer {token}"}, timeout=30)

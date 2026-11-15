@@ -13,8 +13,8 @@ export default function AdminPanel() {
 
   useEffect(() => {
     const s = params.get("dropbox");
-    if (s === "connected") toast.success("Dropbox connected. All is good.");
-    if (s === "error") toast.error(`Dropbox connection failed: ${params.get("reason") || "please try again"}.`, { duration: 15000 });
+    if (s === "connected") toast.success("Dropbox connected. All is good.", { id: "dbx-ok" });
+    if (s === "error") toast.error(`Dropbox connection failed: ${params.get("reason") || "please try again"}.`, { id: "dbx-err", duration: 15000 });
     if (s) setParams({}, { replace: true });
   }, [params, setParams]);
 

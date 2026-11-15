@@ -1,0 +1,27 @@
+{
+  "summary": "Tested the Dropbox OAuth fix (iteration 3). Backend: 9/9 pass (7 new tests plus 2 kept from iteration 2). The start URL has token_access_type=offline, response_type=code, the correct redirect_uri and a state value, with no scope param. The start endpoint needs auth. Admin status returns configured=true, connected=false, missing_scopes=[]. The callback with error=access_denied, with code=x&state=bogus, and with no params all return 307 to /admin?dropbox=error&reason=..., and the bogus-state case gives reason=Invalid%20or%20expired%20OAuth%20state. UI: admin login works. /admin?dropbox=error&reason=Test%20reason shows the error toast 'Dropbox connection failed: Test reason.' and the URL is cleared to /admin. Clicking Connect Dropbox goes to www.dropbox.com/oauth2/authorize (no scope param), and Dropbox shows the page 'Log in or sign up to Dropbox to link with Cooked World' with no authorize_error, so Dropbox accepts the request. I did not sign in to Dropbox. The home page renders.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "AdminPanel dropbox toast", "issue": "2 sonner toasts were found after one visit to /admin?dropbox=error. Likely cause: React.StrictMode runs the useEffect twice in dev before setParams clears the query. Cosmetic, and probably only in dev.", "selector": "[data-sonner-toast]", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": ["/app/backend/tests/test_dropbox_oauth_scopes.py", "/app/backend/tests/test_dropbox_oauth_preflight.py", "/app/test_reports/pytest/pytest_results_iter3.xml"],
+  "action_items": [
+    "Optional: pass an id to the toasts in AdminPanel (e.g. toast.error(msg, {id: 'dbx-oauth'})) so the StrictMode double effect does not show two toasts",
+    "The user still has to finish the real Dropbox sign-in to confirm the token exchange and that the granted scope string is stored. If Dropbox's token response leaves out 'scope', missing_scopes will stay [] because status() only checks when scopes are stored (fail-open)."
+  ],
+  "critical_code_review_comments": [
+    "dropbox_svc.status: missing_scopes is only worked out when row.scopes is non-empty. If the token response has no 'scope' field, missing permissions are hidden silently. Consider checking capabilities with a test call (e.g. files_list_folder('')) after the token exchange.",
+    "AdminGate: if the session has expired when Dropbox redirects back, /admin?dropbox=... goes to /admin/login and the query (with the error reason) is lost."
+  ],
+  "updated_files": ["/app/backend/tests/test_dropbox_oauth_scopes.py (new)", "/app/backend/tests/test_dropbox_oauth_preflight.py (skipped the out-of-date 400 'Invalid redirect_uri' test)"],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "seed_data_creation": "None. The only data created was short-lived oauth_states entries from calling the start endpoint.",
+  "test_credentials": "Admin allisgoodworld@yahoo.com / CookedWorld#2026 (1 API login + 1 UI login, no failures)",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "The Dropbox authorize page now loads (redirect URI registered, no scope param). The next step, the real token exchange, needs a human Dropbox sign-in. The preview may show 'Booting up the preview' on first load, so wait and reload."
+}
