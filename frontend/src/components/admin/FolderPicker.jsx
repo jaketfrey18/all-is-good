@@ -28,7 +28,11 @@ export const FolderPicker = ({ open, onClose, onPick, initial = "" }) => {
               <Folder className="w-4 h-4 text-[#e8a23b]" fill="#f7c873" /> {f.name}
             </button>
           ))}
-          {data && !data.items.length && <p className="p-4 text-sm text-[#7a5f56]">No subfolders.</p>}
+          {data && !data.items.length && (
+            <p className="p-4 text-sm text-[#7a5f56]" data-testid="folder-picker-empty">
+              {path ? "No subfolders." : "Nothing here yet. If your Dropbox app uses \"App folder\" access, put your project folders inside Dropbox → Apps → (your app name), then reopen this window."}
+            </p>
+          )}
         </div>
         <button disabled={!path} onClick={() => { onPick(path); onClose(); }} className="h-11 rounded-full bg-[#e8262f] text-white font-bold disabled:opacity-50 hover:brightness-110 transition-[filter]" data-testid="folder-picker-select-button">
           Use this folder
