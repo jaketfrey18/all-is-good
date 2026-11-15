@@ -1,4 +1,4 @@
-# Dropbox OAuth (iteration 3): no scope param, missing_scopes, callback error redirects
+# Dropbox OAuth (iteration 3): no scope param, missing_scopes, callback HTML result page
 import os
 from urllib.parse import urlparse, parse_qs, unquote
 import pytest
@@ -50,31 +50,35 @@ def test_admin_status(token):
     assert d["redirect_uri"] == f"{BASE_URL}/api/dropbox/oauth/callback"
 
 
-# Callback error redirects
-def _loc(params):
+# Callback result HTML page (iteration 4: replaces redirects)
+def _page(params):
     r = requests.get(f"{BASE_URL}/api/dropbox/oauth/callback", params=params, allow_redirects=False, timeout=30)
-    assert r.status_code == 307, r.status_code
-    return r.headers["location"]
+    assert r.status_code == 200, r.status_code
+    assert r.headers["content-type"].startswith("text/html")
+    assert "Back to admin" in r.text and f'href="{BASE_URL}/admin"' in r.text
+    return r.text
 
 
 def test_callback_access_denied():
-    loc = _loc({"error": "access_denied"})
-    p = urlparse(loc)
-    assert p.path == "/admin"
-    q = parse_qs(p.query)
-    assert q["dropbox"] == ["error"]
-    assert q["reason"][0]
+    t = _page({"error": "access_denied"})
+    assert "Dropbox connection failed" in t
+    assert "You cancelled or Dropbox refused access." in t
 
 
 def test_callback_bogus_state():
-    loc = _loc({"code": "x", "state": "bogus"})
-    assert loc.startswith(f"{BASE_URL}/admin?dropbox=error&reason=")
-    assert "reason=Invalid%20or%20expired%20OAuth%20state" in loc
+    t = _page({"code": "x", "state": "bogus"})
+    assert "Dropbox connection failed" in t
+    assert "Invalid or expired OAuth state" in t
 
 
 def test_callback_missing_params():
-    loc = _loc({})
-    assert "dropbox=error" in loc and "reason=" in loc
+    t = _page({})
+    assert "Dropbox connection failed" in t and "Missing response from Dropbox." in t
+
+
+def test_callback_reason_is_escaped():
+    t = _page({"error": "<script>alert(1)</script>"})
+    assert "<script>alert(1)</script>" not in t
 
 
 def test_public_status():

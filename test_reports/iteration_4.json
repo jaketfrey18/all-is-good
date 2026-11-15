@@ -1,0 +1,27 @@
+{
+  "summary": "Tested the new-tab Dropbox OAuth flow and the HTML callback result page. Backend: 37 passed, 1 skipped (an intentionally obsolete test). Callback returns 200 text/html for all three cases (error=access_denied, bogus state, no params) with the correct title, reason text and a 'Back to admin' link to FRONTEND_URL/admin, and the reason is HTML-escaped. UI: admin login works. Clicking dropbox-connect-button opens a new tab at www.dropbox.com/oauth2/authorize with client_id, state, redirect_uri and token_access_type=offline. The original tab stays on /admin and shows the info toast 'Finish signing in to Dropbox in the new tab. This page updates by itself.' The callback page renders and 'Back to admin' goes to /admin. The home page renders. Did not sign in to Dropbox, so the success path (connected toast after polling, window.close) was not tested.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [{"screen": "Home / document title", "issues": ["Browser tab title is still 'Emergent | Fullstack App'; set it to Cooked World"]}]
+  },
+  "test_report_links": ["/app/backend/tests/test_dropbox_oauth_scopes.py", "/app/backend/tests/test_cooked_world_api.py", "/app/backend/tests/test_dropbox_oauth_preflight.py", "/app/test_reports/pytest/pytest_results.xml"],
+  "action_items": [
+    "Optional: clear the waitForConnection interval on unmount and avoid starting several intervals if Connect is clicked more than once",
+    "Optional: the callback page posts window.opener.postMessage({dropbox}) but DropboxCard does not listen for it. Add a message listener for instant feedback, or drop the postMessage",
+    "Optional: the window.top.location fallback can throw SecurityError in a sandboxed iframe without allow-top-navigation. The catch then shows a generic error toast; show a clear message such as 'Open the app in its own tab to connect Dropbox'"
+  ],
+  "critical_code_review_comments": [
+    "DropboxCard.connect opens about:blank synchronously before the await, which correctly avoids popup blockers",
+    "Polling (every 3s, up to 100 tries) is not tied to the component lifecycle, so it can leak after navigating away",
+    "_done_page escapes the reason text (verified with a script-tag payload)"
+  ],
+  "updated_files": ["/app/backend/tests/test_dropbox_oauth_scopes.py", "/app/backend/tests/test_cooked_world_api.py"],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "test_credentials": "Admin allisgoodworld@yahoo.com / CookedWorld#2026 (from /app/memory/test_credentials.md); one successful UI login and a few API logins, no failed attempts",
+  "seed_data_creation": "Test suite creates TEST_ projects and deletes them by id",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Callback now returns 200 HTML (data-testid oauth-result-title / oauth-result-message) instead of a 307 redirect; tests updated. Dropbox keys are configured but not connected, so files endpoints return 409. Old iteration-1 asserts (configured False / 503) were updated. The success path needs a real Dropbox sign-in by the user."
+}

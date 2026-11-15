@@ -140,8 +140,8 @@ class TestFiles:
         assert requests.get(f"{BASE_URL}/api/projects/{s}/files", params={"path": "/Other"}).status_code == 403
         assert requests.get(f"{BASE_URL}/api/projects/{s}/files", params={"path": "/Clients/TEST/../x"}).status_code == 403
         assert requests.get(f"{BASE_URL}/api/projects/{s}/files", params={"path": "/Clients/TESTX"}).status_code == 403
-        # inside scope -> dropbox not configured -> 503
-        assert requests.get(f"{BASE_URL}/api/projects/{s}/files", params={"path": "/Clients/TEST/a"}).status_code == 503
+        # inside scope -> dropbox configured but not connected -> 409 (503 if keys missing)
+        assert requests.get(f"{BASE_URL}/api/projects/{s}/files", params={"path": "/Clients/TEST/a"}).status_code in (409, 503)
         # link/thumb outside scope should be 403 (scope before client)
         self.link_code = requests.get(f"{BASE_URL}/api/projects/{s}/link", params={"path": "/Other/a.jpg"}).status_code
         self.thumb_code = requests.get(f"{BASE_URL}/api/projects/{s}/thumb", params={"path": "/Other/a.jpg"}).status_code
@@ -162,11 +162,12 @@ class TestSearch:
         assert requests.get(f"{BASE_URL}/api/search", params={"q": ""}).status_code == 422
 
     def test_dropbox_status(self, auth):
-        assert requests.get(f"{BASE_URL}/api/dropbox/status").json() == {"configured": False, "connected": False}
+        # keys configured since iteration 2
+        assert requests.get(f"{BASE_URL}/api/dropbox/status").json()["configured"] is True
         a = requests.get(f"{BASE_URL}/api/admin/dropbox/status", headers=auth).json()
-        assert a["configured"] is False and a["redirect_uri"].endswith("/api/dropbox/oauth/callback")
-        assert requests.get(f"{BASE_URL}/api/admin/dropbox/oauth/start", headers=auth).status_code == 503
+        assert a["configured"] is True and a["redirect_uri"].endswith("/api/dropbox/oauth/callback")
+        assert requests.get(f"{BASE_URL}/api/admin/dropbox/oauth/start", headers=auth).status_code == 200
 
     def test_oauth_callback_error_redirect(self):
         r = requests.get(f"{BASE_URL}/api/dropbox/oauth/callback", allow_redirects=False)
-        assert r.status_code in (302, 307) and "dropbox=error" in r.headers["location"]
+        assert r.status_code == 200 and "Dropbox connection failed" in r.text
