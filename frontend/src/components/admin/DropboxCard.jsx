@@ -11,7 +11,7 @@ export const DropboxCard = () => {
   const { data, isLoading } = useAdminDropbox();
 
   const connect = async () => {
-    try { window.location.assign((await api.get("/admin/dropbox/oauth/start")).data.url); } catch (e) { toast.error(errText(e)); }
+    try { window.location.assign((await api.get("/admin/dropbox/oauth/start")).data.url); } catch (e) { toast.error(errText(e), { duration: 15000 }); }
   };
   const disconnect = async () => {
     if (!window.confirm("Disconnect Dropbox? Project workspaces will stop showing files.")) return;

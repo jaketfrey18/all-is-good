@@ -2,7 +2,7 @@ import asyncio
 import os
 import secrets
 from datetime import datetime, timezone, timedelta
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlparse, parse_qs
 
 import dropbox
 import requests
@@ -43,7 +43,13 @@ async def start_url(db) -> str:
     params = {"client_id": os.environ["DROPBOX_APP_KEY"], "response_type": "code",
               "token_access_type": "offline", "scope": SCOPES, "state": state,
               "redirect_uri": redirect_uri()}
-    return "https://www.dropbox.com/oauth2/authorize?" + urlencode(params)
+    url = "https://www.dropbox.com/oauth2/authorize?" + urlencode(params)
+    r = await asyncio.to_thread(requests.get, url, allow_redirects=False, timeout=15)
+    loc = r.headers.get("location", "")
+    if "authorize_error" in loc:
+        detail = parse_qs(urlparse(loc).query).get("error_detail", ["Dropbox rejected the request"])[0]
+        raise HTTPException(400, f"Dropbox says: {detail}")
+    return url
 
 
 async def finish_oauth(db, code: str, state: str):
