@@ -1,0 +1,99 @@
+{
+  "theme": "light",
+  "typography": {
+    "headings": "Cabinet Grotesk",
+    "body": "Manrope",
+    "monospace": "JetBrains Mono",
+    "instructions": "Use Cabinet Grotesk for bold, expressive headings. Use JetBrains Mono for the typewriter placeholder in the search bar. Use Manrope for standard body copy. Apply tracking-tight to major headings."
+  },
+  "colors": {
+    "background": "#FFF8F0",
+    "primary": "#FF4757",
+    "accent_orange": "#FFA502",
+    "accent_pink": "#FF9EBB",
+    "text_dark": "#2D3436",
+    "text_muted": "#636E72",
+    "border": "#FF4757",
+    "instructions": "The theme is 'Cooked World' warm coral/cream. Backgrounds should be a creamy off-white (#FFF8F0). Red-orange (#FF4757) is the primary interactive and brand color (used for underlines, ENTER button, borders). Use a glowing orange border for active carousel items."
+  },
+  "visual_enhancers": {
+    "hero_background": "Layered SVG scene. Must include: large red-orange sun, pink clouds, red brush-stroke swoosh top-left, LA skyline with palm trees right, golden wireframe/mesh rolling terrain, reflective floor, orange flowers foreground.",
+    "search_bar": "Pill-shaped, white background, subtle shadow, fortune-cookie SVG icon on the left, typewriter mono placeholder, coral 'ENTER ↵' button on the right inside the pill.",
+    "category_row": "Letter-spaced uppercase text ('PROJECTS / WORLDS / MEDIA / PRESENTATIONS'), flanked by horizontal red lines on both sides.",
+    "active_states": "Red underline for active nav links. Glowing orange border for the centered active project card in the carousel."
+  },
+  "grids_and_layouts": {
+    "hero_section": "Relative container, full height. Background SVG layers absolutely positioned. Foreground UI (search, categories, carousel) stacked vertically in the center/bottom, z-index above background.",
+    "workspace_page": "Grid layout: Sidebar for Dropbox folder tree (col-span-3), Main area for file browser/grid (col-span-9).",
+    "archive_page": "High-density Bento grid for all projects, varied card spans based on project type/importance."
+  },
+  "motion_and_interactions": {
+    "hero_parallax": "Use framer-motion useScroll or useMouse to apply subtle translation to the background SVG layers. The sun moves slowest, foreground flowers/mesh move fastest.",
+    "typewriter": "Animate the placeholder text in the search input to mimic a typewriter typing 'All is good. Search the Cooked World...'",
+    "carousel": "3D perspective coverflow effect for the project cards. Smooth scaling and rotation as cards move to the center."
+  },
+  "components": {
+    "navigation": "Top nav. Left: Hamburger icon. Center: Flex gap-8 links (Home, Projects, Archive, Studio, Contact). Right: Search, Bell (with red notification dot), Help, Profile icons.",
+    "carousel": "Implement using Swiper.js with 'coverflow' effect. Include round dark prev/next arrows positioned outside the cards, and active red pagination dots below.",
+    "admin_panel": "Includes forms to connect Dropbox, create/edit projects, map projects to Dropbox folders."
+  },
+  "accessibility": {
+    "contrast": "Ensure text over the warm cream background maintains at least 4.5:1 contrast. Use the dark charcoal color for legibility.",
+    "testing": "All interactive elements, buttons, inputs, and project cards MUST include a 'data-testid' attribute (e.g., 'data-testid=\"search-enter-button\"')."
+  },
+  "media_and_assets": {
+    "image_urls": {
+      "project_gwa": {
+        "url": "https://images.pexels.com/photos/10109585/pexels-photo-10109585.jpeg",
+        "description": "Surreal abstract landscape for GWA - Gods With Amnesia"
+      },
+      "project_yakshalokaus": {
+        "url": "https://images.unsplash.com/photo-1770034285769-4a5a3f410346",
+        "description": "Cabin in purple forest for Yakshalokaus"
+      },
+      "project_jasmins_journey": {
+        "url": "https://images.pexels.com/photos/13778984/pexels-photo-13778984.jpeg",
+        "description": "Vibrant motion abstract for Jasmin's Journey"
+      },
+      "project_wba": {
+        "url": "https://images.pexels.com/photos/29791459/pexels-photo-29791459.jpeg",
+        "description": "Futuristic skyscrapers for WBA - Wealth Builders Association"
+      },
+      "project_rileys": {
+        "url": "https://images.unsplash.com/photo-1729350131236-b086388068c1",
+        "description": "Flying cupcakes for Riley's Magical Meals"
+      }
+    }
+  },
+  "3d_libraries": {
+    "swiper": "Use swiper/react for the 3D coverflow carousel. Configure depth, rotate, and stretch parameters to match a perspective coverflow.",
+    "framer_motion": "Use for the layered SVG parallax hero background and entrance animations."
+  },
+  "instructions_to_main_agent": [
+    "Rebuild the hero background using layered inline SVGs or layered divs with CSS styling to match the described illustration (sun, pink clouds, red swoosh, palm trees skyline, golden mesh, floor, flowers).",
+    "Do NOT use placeholder text or dummy image services; use the provided image URLs for the project cards.",
+    "Implement the 3D coverflow carousel using Swiper.js.",
+    "Create the Dropbox workspace page with a sidebar for folder navigation and a main grid for file viewing. Include a file preview modal for images/video/pdf.",
+    "Implement the Admin panel for JWT login, connecting Dropbox, and mapping projects to folders."
+  ],
+  "UNIVERSAL GUIDELINES FOR MAIN AGENT": [
+    "You tend to converge toward generic, 'on distribution' outputs. In frontend design, this creates what users call the 'AI slop' aesthetic. Avoid this: make creative, distinctive frontends that surprise and delight.",
+    "Dark colors look good when used independently without gradients. DO NOT use dark colors as gradients.",
+    "Don't make generic centered layouts, simplistic gradients, and uniform styling.",
+    "Create depth through layered design elements with z-index hierarchy.",
+    "Use glass-morphism effects with backdrop filters (12-24px blur).",
+    "You MUST NOT apply universal transition. Eg: `transition: all`. This results in breaking transforms. Always add transitions for specific interactive elements like button, input excluding transforms.",
+    "You MUST NOT center align the app container, ie do not add `.App { text-align: center; }` in the css file. This disrupts the human natural reading flow of text.",
+    "Always use modern button styles like pill-shaped, or sharp button with interaction animations & color relevant to the app style.",
+    "NEVER: use AI assistant Emoji characters like 🤖🧠💭💡🔮🎯 etc for icons.",
+    "Every interaction needs micro-animations - hover states, transitions, parallax effects, and entrance animations. Static = dead.",
+    "Use 2-3x more spacing than feels comfortable. Cramped designs look cheap.",
+    "Subtle grain textures, noise overlays, custom cursors, selection states, and loading animations: separates good from extraordinary.",
+    "Prioritize using pre-existing components from src/components/ui when applicable.",
+    "Use `sonner` for toasts. Sonner component are located in `/app/frontend/src/components/ui/sonner.js` or similar JS path."
+  ],
+  "GENERAL UI UX DESIGN GUIDELINES": [
+    "All interactive and key informational elements MUST include a `data-testid` attribute to facilitate robust automated testing.",
+    "DO NOT use complete `transparent` background in header, overlays, any surface that has content under it. Example: Dropdown with transparent background."
+  ]
+}

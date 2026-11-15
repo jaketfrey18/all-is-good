@@ -1,116 +1,346 @@
-import asyncio
-from contextlib import suppress
-from fastapi import FastAPI, APIRouter, Query
-from dotenv import load_dotenv
-from starlette.middleware.cors import CORSMiddleware
-from motor.motor_asyncio import AsyncIOMotorClient
-from pymongo import ASCENDING, DESCENDING, IndexModel
-import os
-import logging
 from pathlib import Path
-from pydantic import BaseModel, Field, ConfigDict
-from typing import List
-import uuid
-from datetime import datetime, timezone
-
+from dotenv import load_dotenv
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
-# MongoDB connection
-mongo_url = os.environ['MONGO_URL']
-client = AsyncIOMotorClient(mongo_url)
-db = client[os.environ['DB_NAME']]
+import asyncio
+import logging
+import os
+import re
+import uuid
+from contextlib import suppress
+from datetime import datetime, timezone, timedelta
+from typing import Optional, List
 
-# One entry per collection: every field a route filters, sorts or dedupes on. Add the index in the same edit as the query.
+from fastapi import FastAPI, APIRouter, HTTPException, Request, Response, Depends, Query
+from fastapi.responses import RedirectResponse
+from motor.motor_asyncio import AsyncIOMotorClient
+from pydantic import BaseModel, Field
+from pymongo import ASCENDING, IndexModel
+from starlette.middleware.cors import CORSMiddleware
+
+import dropbox_svc as dbx
+from auth import hash_password, verify_password, create_access_token, read_token
+
+client = AsyncIOMotorClient(os.environ['MONGO_URL'])
+db = client[os.environ['DB_NAME']]
+logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+
+CATEGORIES = ["projects", "worlds", "media", "presentations"]
+
 INDEXES: dict[str, list[IndexModel]] = {
-    "status_checks": [
-        IndexModel([("id", ASCENDING)], name="id", unique=True),
-        IndexModel([("timestamp", DESCENDING)], name="timestamp_desc"),
-    ],
+    "users": [IndexModel([("email", ASCENDING)], name="email", unique=True)],
+    "projects": [IndexModel([("slug", ASCENDING)], name="slug", unique=True),
+                 IndexModel([("id", ASCENDING)], name="id", unique=True),
+                 IndexModel([("order", ASCENDING)], name="order")],
+    "login_attempts": [IndexModel([("identifier", ASCENDING)], name="identifier")],
+    "oauth_states": [IndexModel([("expires_at", ASCENDING)], name="expires_ttl", expireAfterSeconds=0)],
 }
 
 
 async def ensure_indexes() -> None:
     for collection, models in INDEXES.items():
-        for model in models:  # one at a time so a bad spec skips only itself
+        for model in models:
             try:
                 await db[collection].create_indexes([model])
-            except Exception as exc:  # never block boot on an index; the log line names what to fix
-                logging.getLogger(__name__).error("ensure_indexes(%s.%s): %s", collection, model.document["name"], exc)
+            except Exception as exc:
+                logger.error("ensure_indexes(%s.%s): %s", collection, model.document["name"], exc)
 
-# Create the main app without a prefix
+
 app = FastAPI()
-
-# Create a router with the /api prefix
-api_router = APIRouter(prefix="/api")
+api = APIRouter(prefix="/api")
 
 
-# Define Models
-class StatusCheck(BaseModel):
-    model_config = ConfigDict(extra="ignore")  # Ignore MongoDB's _id field
-    
-    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    client_name: str
-    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+def now_iso():
+    return datetime.now(timezone.utc).isoformat()
 
-class StatusCheckCreate(BaseModel):
-    client_name: str
 
-# Add your routes to the router instead of directly to app
-@api_router.get("/")
-async def root():
-    return {"message": "Hello World"}
+async def current_admin(request: Request) -> dict:
+    payload = read_token(request)
+    user = await db.users.find_one({"id": payload["sub"]}, {"_id": 0, "password_hash": 0})
+    if not user or user.get("role") != "admin":
+        raise HTTPException(403, "Admin access required")
+    return user
 
-@api_router.post("/status", response_model=StatusCheck)
-async def create_status_check(input: StatusCheckCreate):
-    status_dict = input.model_dump()
-    status_obj = StatusCheck(**status_dict)
-    
-    # Convert to dict and serialize datetime to ISO string for MongoDB
-    doc = status_obj.model_dump()
-    doc['timestamp'] = doc['timestamp'].isoformat()
-    
-    _ = await db.status_checks.insert_one(doc)
-    return status_obj
 
-@api_router.get("/status", response_model=List[StatusCheck])
-async def get_status_checks(limit: int = Query(20, ge=1, le=100)):
-    # Exclude MongoDB's _id field from the query results
-    status_checks = await db.status_checks.find({}, {"_id": 0}).sort("timestamp", -1).limit(limit).to_list(limit)
-    
-    # Convert ISO string timestamps back to datetime objects
-    for check in status_checks:
-        if isinstance(check['timestamp'], str):
-            check['timestamp'] = datetime.fromisoformat(check['timestamp'])
-    
-    return status_checks
+# ---------- Models ----------
+class LoginIn(BaseModel):
+    email: str
+    password: str
 
-# Include the router in the main app
-app.include_router(api_router)
+
+class ProjectIn(BaseModel):
+    title: str = Field(min_length=1, max_length=120)
+    slug: Optional[str] = None
+    subtitle: str = ""
+    category: str = "projects"
+    description: str = ""
+    cover_url: str = ""
+    dropbox_path: str = ""
+    order: int = 0
+
+
+class Project(ProjectIn):
+    id: str
+    slug: str
+    created_at: str
+    updated_at: str
+
+
+def slugify(text: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-") or uuid.uuid4().hex[:8]
+
+
+# ---------- Auth ----------
+@api.post("/auth/login")
+async def login(body: LoginIn, request: Request, response: Response):
+    email = body.email.strip().lower()
+    ident = f"{request.client.host if request.client else 'x'}:{email}"
+    att = await db.login_attempts.find_one({"identifier": ident})
+    if att and att.get("count", 0) >= 5 and datetime.fromisoformat(att["last"]) > datetime.now(timezone.utc) - timedelta(minutes=15):
+        raise HTTPException(429, "Too many attempts. Try again in 15 minutes.")
+    user = await db.users.find_one({"email": email})
+    if not user or not verify_password(body.password, user["password_hash"]):
+        await db.login_attempts.update_one({"identifier": ident}, {"$inc": {"count": 1}, "$set": {"last": now_iso()}}, upsert=True)
+        raise HTTPException(401, "Invalid email or password")
+    await db.login_attempts.delete_many({"identifier": ident})
+    token = create_access_token(user["id"], email)
+    response.set_cookie("access_token", token, httponly=True, secure=True, samesite="none", max_age=43200, path="/")
+    return {"token": token, "user": {"id": user["id"], "email": email, "name": user.get("name"), "role": user["role"]}}
+
+
+@api.post("/auth/logout")
+async def logout(response: Response):
+    response.delete_cookie("access_token", path="/")
+    return {"ok": True}
+
+
+@api.get("/auth/me")
+async def me(user: dict = Depends(current_admin)):
+    return user
+
+
+# ---------- Projects ----------
+@api.get("/projects", response_model=List[Project])
+async def list_projects(category: Optional[str] = None):
+    q = {"category": category} if category else {}
+    return await db.projects.find(q, {"_id": 0}).sort("order", 1).to_list(500)
+
+
+@api.get("/projects/{slug}", response_model=Project)
+async def get_project(slug: str):
+    p = await db.projects.find_one({"slug": slug}, {"_id": 0})
+    if not p:
+        raise HTTPException(404, "Project not found")
+    return p
+
+
+async def _unique_slug(base: str, exclude_id: Optional[str] = None) -> str:
+    slug, i = base, 2
+    while await db.projects.find_one({"slug": slug, "id": {"$ne": exclude_id}}):
+        slug, i = f"{base}-{i}", i + 1
+    return slug
+
+
+def _validate(body: ProjectIn):
+    if body.category not in CATEGORIES:
+        raise HTTPException(400, f"Category must be one of {', '.join(CATEGORIES)}")
+
+
+@api.post("/projects", response_model=Project)
+async def create_project(body: ProjectIn, _: dict = Depends(current_admin)):
+    _validate(body)
+    doc = body.model_dump()
+    doc.update(id=str(uuid.uuid4()), slug=await _unique_slug(slugify(body.slug or body.title)),
+               created_at=now_iso(), updated_at=now_iso())
+    await db.projects.insert_one(doc)
+    doc.pop("_id", None)
+    return doc
+
+
+@api.put("/projects/{pid}", response_model=Project)
+async def update_project(pid: str, body: ProjectIn, _: dict = Depends(current_admin)):
+    _validate(body)
+    existing = await db.projects.find_one({"id": pid})
+    if not existing:
+        raise HTTPException(404, "Project not found")
+    data = body.model_dump()
+    data["slug"] = await _unique_slug(slugify(body.slug or body.title), pid)
+    data["updated_at"] = now_iso()
+    await db.projects.update_one({"id": pid}, {"$set": data})
+    return await db.projects.find_one({"id": pid}, {"_id": 0})
+
+
+@api.delete("/projects/{pid}")
+async def delete_project(pid: str, _: dict = Depends(current_admin)):
+    res = await db.projects.delete_one({"id": pid})
+    if not res.deleted_count:
+        raise HTTPException(404, "Project not found")
+    return {"ok": True}
+
+
+# ---------- Project files (public, scoped to mapped folder) ----------
+async def _project_root(slug: str) -> str:
+    p = await db.projects.find_one({"slug": slug}, {"_id": 0, "dropbox_path": 1})
+    if not p:
+        raise HTTPException(404, "Project not found")
+    if not p.get("dropbox_path"):
+        raise HTTPException(409, "No Dropbox folder linked to this project yet")
+    return p["dropbox_path"]
+
+
+def _scoped(root: str, path: Optional[str]) -> str:
+    path = path or root
+    if not dbx.inside(root, path):
+        raise HTTPException(403, "Path outside project folder")
+    return path
+
+
+@api.get("/projects/{slug}/files")
+async def project_files(slug: str, path: Optional[str] = None):
+    root = await _project_root(slug)
+    path = _scoped(root, path)
+    c = await dbx.client(db)
+    return {"root": root, "path": path, "items": await dbx.list_folder(c, path)}
+
+
+@api.get("/projects/{slug}/search")
+async def project_search(slug: str, q: str = Query(min_length=1, max_length=200)):
+    root = await _project_root(slug)
+    c = await dbx.client(db)
+    return {"items": await dbx.search(c, q, root, 50)}
+
+
+@api.get("/projects/{slug}/link")
+async def project_link(slug: str, path: str):
+    root = await _project_root(slug)
+    c = await dbx.client(db)
+    return {"url": await dbx.temp_link(c, _scoped(root, path))}
+
+
+@api.get("/projects/{slug}/thumb")
+async def project_thumb(slug: str, path: str):
+    root = await _project_root(slug)
+    c = await dbx.client(db)
+    data = await dbx.thumbnail(c, _scoped(root, path))
+    return Response(content=data, media_type="image/jpeg", headers={"Cache-Control": "public, max-age=3600"})
+
+
+# ---------- Global search ----------
+@api.get("/search")
+async def global_search(q: str = Query(min_length=1, max_length=200), category: Optional[str] = None):
+    rx = {"$regex": re.escape(q), "$options": "i"}
+    filt = {"$or": [{"title": rx}, {"subtitle": rx}, {"description": rx}, {"category": rx}]}
+    if category:
+        filt["category"] = category
+    projects = await db.projects.find(filt, {"_id": 0}).sort("order", 1).to_list(100)
+    files, files_available = [], False
+    st = await dbx.status(db)
+    if st["connected"]:
+        files_available = True
+        mapped = await db.projects.find({"dropbox_path": {"$ne": ""}, **({"category": category} if category else {})},
+                                        {"_id": 0, "slug": 1, "title": 1, "dropbox_path": 1}).to_list(100)
+        c = await dbx.client(db)
+
+        async def one(p):
+            try:
+                return [{**f, "project_slug": p["slug"], "project_title": p["title"]}
+                        for f in await dbx.search(c, q, p["dropbox_path"], 15)]
+            except HTTPException:
+                return []
+        for chunk in await asyncio.gather(*[one(p) for p in mapped]):
+            files.extend(chunk)
+    return {"projects": projects, "files": files, "files_available": files_available}
+
+
+# ---------- Dropbox admin ----------
+@api.get("/dropbox/status")
+async def dropbox_status():
+    st = await dbx.status(db)
+    return {"configured": st["configured"], "connected": st["connected"]}
+
+
+@api.get("/admin/dropbox/status")
+async def admin_dropbox_status(_: dict = Depends(current_admin)):
+    st = await dbx.status(db)
+    st["redirect_uri"] = dbx.redirect_uri()
+    return st
+
+
+@api.get("/admin/dropbox/oauth/start")
+async def dropbox_oauth_start(_: dict = Depends(current_admin)):
+    return {"url": await dbx.start_url(db)}
+
+
+@api.get("/dropbox/oauth/callback")
+async def dropbox_oauth_callback(code: Optional[str] = None, state: Optional[str] = None, error: Optional[str] = None):
+    base = os.environ["FRONTEND_URL"].rstrip("/") + "/admin"
+    if error or not code or not state:
+        return RedirectResponse(f"{base}?dropbox=error")
+    try:
+        await dbx.finish_oauth(db, code, state)
+    except HTTPException as e:
+        logger.error("Dropbox OAuth failed: %s", e.detail)
+        return RedirectResponse(f"{base}?dropbox=error")
+    return RedirectResponse(f"{base}?dropbox=connected")
+
+
+@api.delete("/admin/dropbox/connection")
+async def dropbox_disconnect(_: dict = Depends(current_admin)):
+    await dbx.disconnect(db)
+    return {"ok": True}
+
+
+@api.get("/admin/dropbox/folders")
+async def dropbox_folders(path: str = "", _: dict = Depends(current_admin)):
+    c = await dbx.client(db)
+    items = await dbx.list_folder(c, path)
+    return {"path": path, "items": [i for i in items if i["type"] == "folder"]}
+
+
+app.include_router(api)
 
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=True,
-    allow_origins=os.environ.get('CORS_ORIGINS', '*').split(','),
+    allow_origins=[os.environ["FRONTEND_URL"]],
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
+SEED = [
+    ("GWA", "Gods With Amnesia", "worlds", "/covers/gwa.jpg"),
+    ("Yakshalokaus", "", "worlds", "/covers/yakshalokaus.jpg"),
+    ("Jasmin's Journey", "", "projects", "/covers/jasmin.jpg"),
+    ("WBA", "Wealth Builders Association", "presentations", "/covers/wba.jpg"),
+    ("Riley's Magical Meals", "", "media", "/covers/riley.jpg"),
+]
+
+
+async def seed():
+    email = os.environ["ADMIN_EMAIL"].lower()
+    if not await db.users.find_one({"email": email}):
+        await db.users.insert_one({"id": str(uuid.uuid4()), "email": email, "name": "Admin", "role": "admin",
+                                   "password_hash": hash_password(os.environ["ADMIN_PASSWORD"]), "created_at": now_iso()})
+    if await db.projects.count_documents({}) == 0:
+        for i, (title, sub, cat, cover) in enumerate(SEED):
+            await db.projects.insert_one({"id": str(uuid.uuid4()), "slug": slugify(title.replace("'", "")), "title": title,
+                                          "subtitle": sub, "category": cat, "cover_url": cover, "dropbox_path": "",
+                                          "description": "[Add a short description of this project in the admin panel]",
+                                          "order": i, "created_at": now_iso(), "updated_at": now_iso()})
+
 
 @app.on_event("startup")
-async def start_index_build():
-    app.state.index_task = asyncio.create_task(ensure_indexes())  # background: a big index build must not block boot
+async def startup():
+    await seed()
+    app.state.index_task = asyncio.create_task(ensure_indexes())
+
 
 @app.on_event("shutdown")
 async def shutdown_db_client():
-    app.state.index_task.cancel()  # stop a build still running before its client closes
+    app.state.index_task.cancel()
     with suppress(asyncio.CancelledError):
         await app.state.index_task
     client.close()

@@ -1,34 +1,100 @@
-.App-logo {
-    height: 40vmin;
+.grain::after {
+    content: "";
+    position: absolute;
+    inset: 0;
     pointer-events: none;
+    opacity: 0.18;
+    mix-blend-mode: multiply;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.5 0 0 0 0 0.3 0 0 0 0 0.2 0 0 0 0.5 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
 }
 
-@media (prefers-reduced-motion: no-preference) {
-    .App-logo {
-        animation: App-logo-spin infinite 20s linear;
-    }
+.nav-link {
+    position: relative;
+    transition: color 0.2s ease;
 }
 
-.App-header {
-    background-color: #0f0f10;
-    min-height: 100vh;
+.nav-link.active::after {
+    content: "";
+    position: absolute;
+    left: -6px;
+    right: -6px;
+    bottom: -8px;
+    height: 3px;
+    border-radius: 999px;
+    background: #e8262f;
+    transform: rotate(-1.5deg);
+}
+
+.coverflow .swiper-slide {
+    width: 300px;
+    height: 400px;
+    transition: filter 0.4s ease;
+    filter: saturate(0.85) brightness(0.92);
+}
+
+.coverflow .swiper-slide-active {
+    filter: none;
+}
+
+.coverflow .swiper-slide-active .cf-card {
+    box-shadow: 0 0 0 3px #ff8a3d, 0 0 38px 6px rgba(255, 120, 50, 0.65), 0 30px 60px -20px rgba(120, 30, 10, 0.6);
+}
+
+.cf-card {
+    box-shadow: 0 25px 50px -20px rgba(80, 20, 10, 0.55);
+    transition: box-shadow 0.4s ease;
+}
+
+.cf-dots {
     display: flex;
-    flex-direction: column;
-    align-items: center;
     justify-content: center;
-    font-size: calc(10px + 2vmin);
-    color: white;
+    gap: 14px;
 }
 
-.App-link {
-    color: #61dafb;
+.cf-dots .swiper-pagination-bullet {
+    width: 13px;
+    height: 13px;
+    background: #fff3ea;
+    opacity: 1;
+    border: 1.5px solid #d8b8a8;
+    transition: background-color 0.25s ease, border-color 0.25s ease;
 }
 
-@keyframes App-logo-spin {
-    from {
-        transform: rotate(0deg);
-    }
-    to {
-        transform: rotate(360deg);
+.cf-dots .swiper-pagination-bullet-active {
+    background: #e8262f;
+    border-color: #fff;
+    box-shadow: 0 0 0 2px #e8262f;
+}
+
+@keyframes blink {
+    50% { opacity: 0; }
+}
+
+.caret {
+    animation: blink 1s steps(1) infinite;
+}
+
+@keyframes floaty {
+    0%, 100% { transform: translateY(0) rotate(-6deg); }
+    50% { transform: translateY(-4px) rotate(-3deg); }
+}
+
+.cookie-float {
+    animation: floaty 4s ease-in-out infinite;
+}
+
+@keyframes rise {
+    from { opacity: 0; transform: translateY(18px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.rise {
+    animation: rise 0.8s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+@media (max-width: 640px) {
+    .coverflow .swiper-slide {
+        width: 220px;
+        height: 300px;
     }
 }
