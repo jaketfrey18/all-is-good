@@ -11,7 +11,32 @@ export const DropboxCard = () => {
   const { data, isLoading } = useAdminDropbox();
 
   const connect = async () => {
-    try { window.location.assign((await api.get("/admin/dropbox/oauth/start")).data.url); } catch (e) { toast.error(errText(e), { duration: 15000 }); }
+    const win = window.open("about:blank", "_blank");
+    try {
+      const { url } = (await api.get("/admin/dropbox/oauth/start")).data;
+      if (win) {
+        win.location.href = url;
+        toast.info("Finish signing in to Dropbox in the new tab. This page updates by itself.", { id: "dbx-wait", duration: 10000 });
+        waitForConnection();
+      } else {
+        window.top.location.href = url;
+      }
+    } catch (e) {
+      win?.close();
+      toast.error(errText(e), { duration: 15000 });
+    }
+  };
+  const waitForConnection = () => {
+    let tries = 0;
+    const timer = setInterval(async () => {
+      tries += 1;
+      const st = (await api.get("/admin/dropbox/status").catch(() => ({ data: {} }))).data;
+      if (st.connected) {
+        clearInterval(timer);
+        toast.success("Dropbox connected. All is good.", { id: "dbx-ok" });
+        qc.invalidateQueries();
+      } else if (tries > 100) clearInterval(timer);
+    }, 3000);
   };
   const disconnect = async () => {
     if (!window.confirm("Disconnect Dropbox? Project workspaces will stop showing files.")) return;

@@ -12,10 +12,10 @@ import uuid
 from contextlib import suppress
 from datetime import datetime, timezone, timedelta
 from typing import Optional, List
-from urllib.parse import quote
+import html
+from fastapi.responses import HTMLResponse
 
 from fastapi import FastAPI, APIRouter, HTTPException, Request, Response, Depends, Query
-from fastapi.responses import RedirectResponse
 from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, Field
 from pymongo import ASCENDING, IndexModel
@@ -278,18 +278,28 @@ async def dropbox_oauth_start(_: dict = Depends(current_admin)):
     return {"url": await dbx.start_url(db)}
 
 
+def _done_page(ok: bool, reason: str = "") -> HTMLResponse:
+    admin = os.environ["FRONTEND_URL"].rstrip("/") + "/admin"
+    title = "Dropbox connected. All is good." if ok else "Dropbox connection failed"
+    body = "You can close this tab and go back to the app." if ok else html.escape(reason)
+    color = "#1f9d55" if ok else "#e8262f"
+    return HTMLResponse(f"""<!doctype html><html><head><meta name=viewport content="width=device-width,initial-scale=1"><title>{title}</title></head>
+<body style="margin:0;min-height:100vh;display:grid;place-items:center;background:#fff8f0;font-family:system-ui,sans-serif;color:#2d2422">
+<div style="max-width:460px;padding:40px;text-align:center"><h1 data-testid="oauth-result-title" style="color:{color};font-size:28px">{title}</h1>
+<p data-testid="oauth-result-message">{body}</p><a href="{admin}" style="display:inline-block;margin-top:16px;padding:12px 24px;border-radius:999px;background:#2d2422;color:#fff;text-decoration:none">Back to admin</a></div>
+<script>try{{if(window.opener){{window.opener.postMessage({{dropbox:{'true' if ok else 'false'}}},'*');{'setTimeout(()=>window.close(),1500);' if ok else ''}}}}}catch(e){{}}</script></body></html>""")
+
+
 @api.get("/dropbox/oauth/callback")
 async def dropbox_oauth_callback(code: Optional[str] = None, state: Optional[str] = None, error: Optional[str] = None):
-    base = os.environ["FRONTEND_URL"].rstrip("/") + "/admin"
     if error or not code or not state:
-        reason = "You cancelled or Dropbox refused access" if error else "Missing response from Dropbox"
-        return RedirectResponse(f"{base}?dropbox=error&reason={quote(reason)}")
+        return _done_page(False, "You cancelled or Dropbox refused access." if error else "Missing response from Dropbox.")
     try:
         await dbx.finish_oauth(db, code, state)
     except HTTPException as e:
         logger.error("Dropbox OAuth failed: %s", e.detail)
-        return RedirectResponse(f"{base}?dropbox=error&reason={quote(str(e.detail))}")
-    return RedirectResponse(f"{base}?dropbox=connected")
+        return _done_page(False, str(e.detail))
+    return _done_page(True)
 
 
 @api.delete("/admin/dropbox/connection")
