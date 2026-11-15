@@ -12,6 +12,7 @@ import uuid
 from contextlib import suppress
 from datetime import datetime, timezone, timedelta
 from typing import Optional, List
+from urllib.parse import quote
 
 from fastapi import FastAPI, APIRouter, HTTPException, Request, Response, Depends, Query
 from fastapi.responses import RedirectResponse
@@ -281,12 +282,13 @@ async def dropbox_oauth_start(_: dict = Depends(current_admin)):
 async def dropbox_oauth_callback(code: Optional[str] = None, state: Optional[str] = None, error: Optional[str] = None):
     base = os.environ["FRONTEND_URL"].rstrip("/") + "/admin"
     if error or not code or not state:
-        return RedirectResponse(f"{base}?dropbox=error")
+        reason = "You cancelled or Dropbox refused access" if error else "Missing response from Dropbox"
+        return RedirectResponse(f"{base}?dropbox=error&reason={quote(reason)}")
     try:
         await dbx.finish_oauth(db, code, state)
     except HTTPException as e:
         logger.error("Dropbox OAuth failed: %s", e.detail)
-        return RedirectResponse(f"{base}?dropbox=error")
+        return RedirectResponse(f"{base}?dropbox=error&reason={quote(str(e.detail))}")
     return RedirectResponse(f"{base}?dropbox=connected")
 
 

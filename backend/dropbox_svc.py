@@ -9,7 +9,7 @@ import requests
 from cryptography.fernet import Fernet
 from fastapi import HTTPException
 
-SCOPES = "account_info.read files.metadata.read files.content.read"
+REQUIRED_SCOPES = {"files.metadata.read", "files.content.read"}
 _cache = {"rt": None, "client": None}
 
 IMAGE_EXT = {"jpg", "jpeg", "png", "gif", "webp", "bmp", "tiff", "tif", "heic"}
@@ -41,7 +41,7 @@ async def start_url(db) -> str:
     state = secrets.token_urlsafe(32)
     await db.oauth_states.insert_one({"_id": state, "expires_at": now() + timedelta(minutes=10)})
     params = {"client_id": os.environ["DROPBOX_APP_KEY"], "response_type": "code",
-              "token_access_type": "offline", "scope": SCOPES, "state": state,
+              "token_access_type": "offline", "state": state,
               "redirect_uri": redirect_uri()}
     url = "https://www.dropbox.com/oauth2/authorize?" + urlencode(params)
     try:
@@ -70,10 +70,15 @@ async def finish_oauth(db, code: str, state: str):
     if not t.get("refresh_token"):
         raise HTTPException(502, "No refresh token returned")
     client = _build(t["refresh_token"])
-    account = await asyncio.to_thread(client.users_get_current_account)
+    granted = t.get("scope", "").split()
+    try:
+        account = await asyncio.to_thread(client.users_get_current_account)
+        name, email = account.name.display_name, account.email
+    except Exception:
+        name, email = "Dropbox account", None
     await db.connections.replace_one({"_id": "dropbox"}, {
-        "_id": "dropbox", "account_id": t.get("account_id"),
-        "account_name": account.name.display_name, "account_email": account.email,
+        "_id": "dropbox", "account_id": t.get("account_id"), "scopes": granted,
+        "account_name": name, "account_email": email,
         "refresh_token": _fernet().encrypt(t["refresh_token"].encode()).decode(),
         "updated_at": now().isoformat()}, upsert=True)
 
@@ -87,7 +92,8 @@ async def status(db) -> dict:
     row = await db.connections.find_one({"_id": "dropbox"}, {"refresh_token": 0})
     return {"configured": configured(), "connected": bool(row) and configured(),
             "account_name": row.get("account_name") if row else None,
-            "account_email": row.get("account_email") if row else None}
+            "account_email": row.get("account_email") if row else None,
+            "missing_scopes": sorted(REQUIRED_SCOPES - set(row.get("scopes", []))) if row and row.get("scopes") else []}
 
 
 async def client(db):
