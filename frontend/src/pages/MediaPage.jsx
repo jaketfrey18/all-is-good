@@ -11,7 +11,7 @@ import { WorldLibrary } from "@/components/library/WorldLibrary";
 import { AssetPreview } from "@/components/library/AssetPreview";
 import { TagEditor } from "@/components/library/TagEditor";
 import { UseInWorld } from "@/components/library/UseInWorld";
-import { mediaUrl, kindOf } from "@/components/library/assetsApi";
+import { useAssetLink, kindOf } from "@/components/library/assetsApi";
 import { useAuth } from "@/context/AuthContext";
 import { api, errText, fmtSize, thumbUrl } from "@/lib/api";
 import { useProjects, useTempLink } from "@/lib/hooks";
@@ -22,7 +22,8 @@ const chip = (on) => `h-9 px-4 rounded-full text-sm font-semibold border transit
 function PreviewPane({ file, libWorld }) {
   const qc = useQueryClient();
   const { data: link, isLoading } = useTempLink(file?.project_slug, file?.path, !!file && !file.asset_id);
-  const url = file?.asset_id ? mediaUrl(file.asset_id) : link;
+  const rec = useAssetLink(file?.asset_id, !!file?.asset_id);
+  const url = file?.asset_id ? rec.data : link;
   const navigate = useNavigate();
   const openClip = async () => {
     const body = file.asset_id ? { world_slug: file.project_slug, asset_id: file.asset_id } : { world_slug: file.project_slug, path: file.path };
@@ -41,7 +42,7 @@ function PreviewPane({ file, libWorld }) {
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0"><p className="font-display text-2xl font-bold truncate">{file.name}</p>
           <p className="font-mono text-xs text-white/50 truncate" data-testid="media-source-info">World: {file.project_title} · {file.asset_id ? "recording" : file.path} · {fmtSize(file.size)}</p></div>
-        {url && <a href={file.asset_id ? mediaUrl(file.asset_id, "&dl=1") : url} target="_blank" rel="noreferrer" className="shrink-0 inline-flex items-center gap-2 h-10 px-4 rounded-full bg-white/10 hover:bg-[#e0141b] text-sm font-semibold transition-colors" data-testid="media-download-link"><Download className="w-4 h-4" /> Download</a>}
+        {url && <a href={file.asset_id ? `${url}&dl=1` : url} target="_blank" rel="noreferrer" className="shrink-0 inline-flex items-center gap-2 h-10 px-4 rounded-full bg-white/10 hover:bg-[#e0141b] text-sm font-semibold transition-colors" data-testid="media-download-link"><Download className="w-4 h-4" /> Download</a>}
       </div>
       {file.why && <p className="text-xs text-[#ff8a94]" data-testid="media-suggest-why">Suggested because: {file.why}</p>}
       <TagEditor key={file.project_slug + (file.asset_id || file.path)} tags={file.tags || []} onSave={saveTags} testid="media-tags" />

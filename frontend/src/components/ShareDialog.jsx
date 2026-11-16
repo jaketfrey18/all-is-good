@@ -13,7 +13,7 @@ export const ShareDialog = ({ open, onOpenChange, kind, id, ownerId, sharedWith,
   const [picked, setPicked] = useState(sharedWith);
   const [busy, setBusy] = useState(false);
   useEffect(() => { if (open) setPicked(sharedWith); }, [open, sharedWith]);
-  const others = users.filter((u) => u.id !== ownerId);
+  const others = users.filter((u) => u.id !== ownerId && !(kind === "worlds" && u.role === "admin"));
   const toggle = (uid) => setPicked((p) => (p.includes(uid) ? p.filter((x) => x !== uid) : [...p, uid]));
 
   const save = async () => {

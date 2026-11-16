@@ -1,19 +1,21 @@
 import asyncio
 import logging
+import os
 import re
 import subprocess
 import tempfile
 import uuid
 from collections import OrderedDict
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import List, Optional
 
+import jwt
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
 import dropbox_svc as dbx
-from auth import decode_token, create_access_token
 from core import db, now_iso, current_user, user_by_id, member_slugs, require_member
 from sessions import receive_chunk, get_object, put_object, parts_to_dropbox, can_write, safe, disposition, APP_NAME
 
@@ -54,8 +56,19 @@ def words(text: str) -> set:
     return {w for w in out if len(w) > 1}
 
 
-def mint(user: dict) -> str:
-    return create_access_token(user["id"], user.get("email", ""))
+def mint(user: dict, aid: str) -> str:
+    payload = {"sub": user["id"], "type": "media", "aid": aid, "exp": datetime.now(timezone.utc) + timedelta(hours=6)}
+    return jwt.encode(payload, os.environ["JWT_SECRET"], algorithm="HS256")
+
+
+def read_media_token(token: str, aid: str) -> str:
+    try:
+        p = jwt.decode(token, os.environ["JWT_SECRET"], algorithms=["HS256"])
+    except jwt.PyJWTError:
+        raise HTTPException(401, "This media link expired. Reopen the asset.")
+    if p.get("type") != "media" or p.get("aid") != aid:
+        raise HTTPException(401, "Invalid media link")
+    return p["sub"]
 
 
 async def titles() -> dict:
@@ -88,7 +101,7 @@ async def media_url(aid: str, user: dict, internal: bool = False) -> str:
     a = await resolve(await get_asset(aid, user), user)
     if a["kind"] == "file":
         return await dbx.temp_link(await dbx.client(db), a["path"])
-    return f"{'http://127.0.0.1:8001' if internal else ''}/api/assets/{a['id']}/media?token={mint(user)}"
+    return f"{'http://127.0.0.1:8001' if internal else ''}/api/assets/{a['id']}/media?token={mint(user, a['id'])}"
 
 
 def shape(a: dict, allowed: list, names: dict) -> dict:
@@ -96,7 +109,7 @@ def shape(a: dict, allowed: list, names: dict) -> dict:
     a["world_title"] = names.get(a["world_slug"], a["world_slug"])
     if a["kind"] == "reference":
         a["source"]["world_title"] = names.get(a["source"]["world_slug"], a["source"]["world_slug"])
-        a["accessible"] = a["source"]["world_slug"] in allowed
+        a["accessible"] = a["source"]["world_slug"] in allowed and not a.get("source_deleted")
     else:
         a["accessible"] = True
     return a
@@ -178,13 +191,15 @@ class AssetUpdate(BaseModel):
 
 @router.patch("/assets/{aid}")
 async def update_asset(aid: str, body: AssetUpdate, user: dict = Depends(current_user)):
-    await get_asset(aid, user)
+    a = await get_asset(aid, user)
     data = {"updated_at": now_iso()}
     if body.name is not None and body.name.strip():
         data["name"] = safe(body.name)
     if body.tags is not None:
         data["tags"] = norm_tags(body.tags)
     await db.assets.update_one({"id": aid}, {"$set": data})
+    if "tags" in data and a["kind"] == "recording":
+        await db.assets.update_many({"source.asset_id": aid}, {"$set": {"tags": data["tags"], "source.tags": data["tags"]}})
     return {"ok": True, **data}
 
 
@@ -194,6 +209,8 @@ async def delete_asset(aid: str, user: dict = Depends(current_user)):
     if user.get("role") != "admin" and a["owner_id"] != user["id"]:
         raise HTTPException(403, "Only the person who added this can remove it")
     await db.assets.update_one({"id": aid}, {"$set": {"is_deleted": True}})
+    if a["kind"] == "recording":
+        await db.assets.update_many({"source.asset_id": aid}, {"$set": {"source_deleted": True}})
     return {"ok": True}
 
 
@@ -217,7 +234,7 @@ async def _bytes(a: dict) -> bytes:
 
 @router.get("/assets/{aid}/media")
 async def asset_media(aid: str, request: Request, token: str = "", format: str = "webm", dl: int = 0):
-    user = await user_by_id(decode_token(token)["sub"])
+    user = await user_by_id(read_media_token(token, aid))
     if not user:
         raise HTTPException(404, "Not found")
     a = await resolve(await get_asset(aid, user), user)

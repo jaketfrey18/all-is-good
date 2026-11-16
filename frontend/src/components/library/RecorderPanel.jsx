@@ -75,8 +75,8 @@ function SaveForm({ blob, world, setWorld, onSaved, secs }) {
   const [name, setName] = useState(`Recording ${new Date().toLocaleString()}`);
   const [tags, setTags] = useState("");
   const [pct, setPct] = useState(null);
-  const url = useRef(URL.createObjectURL(blob)).current;
-  useEffect(() => () => URL.revokeObjectURL(url), [url]);
+  const [url, setUrl] = useState("");
+  useEffect(() => { const u = URL.createObjectURL(blob); setUrl(u); return () => URL.revokeObjectURL(u); }, [blob]);
   const save = async () => {
     if (!world) return toast.error("Pick a World to save into");
     setPct(0);
@@ -90,7 +90,7 @@ function SaveForm({ blob, world, setWorld, onSaved, secs }) {
   const inp = "w-full h-10 rounded-xl bg-white/[0.06] border border-white/15 px-3 text-sm outline-none focus:border-[#ff4757]";
   return (
     <div className="space-y-3" data-testid="recorder-save-form">
-      <audio src={url} controls className="w-full" data-testid="recorder-preview" />
+      <audio src={url || undefined} controls className="w-full" data-testid="recorder-preview" />
       <a href={url} download={`${name || "recording"}.webm`} className="inline-flex items-center gap-1.5 text-xs text-white/70 hover:text-white" data-testid="recorder-download"><Download className="w-3.5 h-3.5" /> Download WebM ({fmt(secs)})</a>
       <input value={name} onChange={(e) => setName(e.target.value)} maxLength={120} className={inp} placeholder="Name" data-testid="recorder-name-input" />
       <input value={tags} onChange={(e) => setTags(e.target.value)} className={inp} placeholder="Tags, comma separated (e.g. hip-hop, instrumental)" data-testid="recorder-tags-input" />
@@ -123,7 +123,7 @@ export const RecorderPanel = ({ open, onOpenChange, world: initialWorld = "", on
               : <button onClick={rec.start} className="w-14 h-14 rounded-full bg-[#e0141b] grid place-items-center shadow-[0_0_25px_rgba(224,20,27,0.6)] hover:scale-105 transition-transform" aria-label="Start recording" data-testid="recorder-start-button"><Circle className="w-6 h-6" fill="white" /></button>}
             <div className="flex-1">
               <p className="font-mono text-2xl tabular-nums" data-testid="recorder-timer">{fmt(rec.secs)}</p>
-              <p className="text-[11px] text-white/45">{rec.state === "recording" ? "Recording… stop here or with the browser's Stop sharing" : "Ready"}</p>
+              <p className="text-[11px] text-white/45">{rec.state === "recording" ? "Recording…" : "Ready"}</p>
             </div>
             <Meter level={rec.level} />
           </div>

@@ -15,9 +15,16 @@ Latest (2026-11-16): "okay lets change GWAS landing page to the reference. keep 
 - 2026-11-15: portfolio, Dropbox OAuth, project↔folder mapping, admin
 - 2026-11-16: homepage restyle; Media search; collaborators/sharing; dark live canvas; Lyric Pad realtime; Clip Studio phase 1 (tests iteration_5/6)
 - 2026-11-16: GWA landing page per reference (/p/gwa: studio hero cropped from reference → /gwa-studio.jpg, 5 tiles, Recent Sessions, tools lists, Files & Media). Session Drop drawer (GWA page + canvas button): sessions CRUD, multi-file chunked upload, auto-sort by type with manual override, download, delete, Dropbox send (409 until write permission). Tested iteration_7 (all pass; minor fixes applied after: unicode download filename, blank session name, mobile delete button, count labels)
+- 2026-11-16 (Media Capture + Cross-World Reuse V1): user request "Browser Audio Capture … Cross-World Asset Reuse … Simple Asset Suggestions … Save & Organization". Choices: only World members can search/reuse a World's assets (admin assigns per World); Dropbox files on World pages are now members-only.
+  - Tab audio recorder (getDisplayMedia + MediaRecorder, WebM; server FFmpeg remux + WAV download) in Media → World Library, Canvas + menu, Clip Studio header; recordings saved to object storage as `assets` (kind recording) with rename/tags; auto-push to Dropbox `{world}/Recordings/` when write is on
+  - Media page: World Library tab (recordings + references + Suggested Assets) and Search All Worlds tab (filename/type/#tag/World filters, tag editing for Dropbox files via file_meta, Use in This World → deduped reference asset, original untouched)
+  - Permissions: projects.members; /api/worlds/mine; members dialog in Admin → Projects; project file endpoints + search members-only; references locked without source access; media served via 6h asset-scoped tokens
+  - Session Drop uploads now stored as object-storage parts
+  - Tested iteration_8 (all pass; tester fixed recorder blob URL bug; follow-ups applied: scoped media tokens, reference tag sync + deleted-original flag, admin hidden from members dialog)
 
 ## Backlog
-- P0: Google login (Emergent-managed) + Owner/Editor/Viewer roles per World, invites
+- P0: Google login (Emergent-managed) + Owner/Editor/Viewer roles per World, invites (now: admin-assigned World members)
+- P1: stream long recordings (>1h) instead of in-memory processing
 - P0: Dropbox write permission (user: tick files.content.write, reconnect) — needed for Session Drop sync, backups, Dropbox exports
 - P1: Session Drop: per-world sorting rules, link session files to canvas/clip studio; apply studio layout to other worlds
 - P1: Clip Studio: timeline thumbnails, local upload, text overlays, sequence export; Lyric PDF export

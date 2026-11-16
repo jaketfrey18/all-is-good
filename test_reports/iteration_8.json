@@ -1,0 +1,43 @@
+{
+  "summary": "Iteration 8: tab audio recorder, recording assets, cross-World references, Search All Worlds, Suggestions, members-only permissions, plus regression smoke. Backend: 15/15 new pytest tests pass (chunked recording upload + ffmpeg remux, 415 on bad media, rename/tags persistence, media Range 206 + WAV served as audio/wav with RIFF header, link, clip-project from asset, #tag search, kind filter, reference dedupe, same-world 400, reference media resolves, suggestions why-text, collaborator scope (worlds/mine==['wba'], 403 on gwa assets/files/media/link/reference/suggest, no GWA files in search, reference accessible=false), anonymous 401s, Dropbox file-tags PUT + tag search + Dropbox-file reference dedupe + outside-path 403). Session Drop regression 12/12 pass. Frontend: recorder tested in a separately launched Chromium with --use-fake-device-for-media-stream (getDisplayMedia returns a fake screen + fake audio track). The recorder start, timer, level meter (up to 24 bars lit), stop, preview, download, name/tags, save, toast, library item and persistence after refresh all worked. The asset-preview checks also passed: rename on blur, add/remove tags, audio plays, WAV download, Open in Clip Studio (studio plays, clip-time advances), clip-record-audio, Canvas add-record-audio, the #hip-hop search and kind chips, media-source-info, use-in-world to WBA (the toast shows, repeating it creates no duplicate, the WBA row shows 'from GWA', asset-source-info says 'Referenced from GWA', the reference plays), WBA suggestions ('Tagged hip-hop, beat · Music/audio like you need · from GWA'), cancel/no-audio error messages, anonymous 'Members only' on /p/gwa and media-signin-note, and the admin members-project-wba share-dialog. ONE BUG FOUND AND FIXED: the recorder preview and download blob URL was revoked by React StrictMode's double effect, so recorder-preview did not play and the download link was dead.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "/api/assets/{aid}/media?token=", "issue": "Uses a full-privilege access JWT (create_access_token) in the query string. It leaks through URLs, server logs, Referer and copied links. Use a short-lived, asset-scoped media token instead."},
+      {"endpoint": "/api/assets/reference", "issue": "Reference tags are copied when the reference is created. Later tag edits on the original do not reach the reference. If the original is deleted, the reference stays listed with accessible=true and its link returns 404 'original was deleted'. Consider cascading or flagging dangling references."},
+      {"endpoint": "assets._bytes/_cache, upload_recording", "issue": "Holds up to 4 whole recordings in process memory and joins all upload parts in RAM before remuxing. Long recordings (1h+ at 192 kbps is about 85 MB) could cause memory pressure. Consider streaming to a temp file."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "RecorderPanel SaveForm", "issue": "FIXED BY TESTER: useRef(URL.createObjectURL(blob)) together with a revoke cleanup was revoked by StrictMode's mount/unmount/mount cycle. recorder-preview threw 'no supported sources' (ERR_FILE_NOT_FOUND) and the recorder-download link was dead. Now the URL is created inside useEffect with state. Verified that the preview plays.", "selector": "[data-testid=recorder-preview], [data-testid=recorder-download]", "priority": "HIGH"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Recorder panel while recording", "issues": ["The status text 'Recording… stop here or with the browser's Stop sharing' wraps into a narrow 5-line column next to the meter. Shorten it or put it on its own row."]},
+      {"screen": "Admin share dialog", "issues": ["The admin account is listed as a tickable member even though admins already see everything. It is redundant, so consider hiding it."]},
+      {"screen": "WBA world title (data)", "issues": ["The World title is spelled 'Wealth Builders Assocation' (typo in seed/real data; not modified)."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_assets_worlds.py", "/app/backend/tests/test_file_tags_refs.py", "/app/backend/tests/test_session_drop.py", "/app/test_reports/pytest/pytest_assets.xml"],
+  "action_items": [
+    "Keep (or rework) the tester's fix in RecorderPanel.jsx SaveForm blob URL handling",
+    "Replace the full JWT in media ?token= with a short-lived, asset-scoped token",
+    "Decide how to handle references whose original is deleted, and tag drift between originals and references",
+    "Minor UI: recorder status text wrapping; hide admin in share dialog"
+  ],
+  "critical_code_review_comments": [
+    "assets.asset_media: a full-scope bearer token in the URL is a security smell",
+    "References keep a snapshot of tags/name; the original's later changes are not reflected",
+    "Soft-deleting a recording does not remove its storage object, and dangling references remain",
+    "Recording upload and media serving are fully in-memory (raw join + _cache of 4 items)",
+    "Real tab-audio capture (Priority A) could NOT be verified end-to-end. Headless Chromium returns NotReadableError 'Could not start audio source' for a real tab picked with --auto-select-tab-capture-source-by-title (no audio loopback in the container). The recorder pipeline was verified with Chromium's fake capture device instead."
+  ],
+  "updated_files": ["/app/frontend/src/components/library/RecorderPanel.jsx", "/app/backend/tests/test_assets_worlds.py", "/app/backend/tests/test_file_tags_refs.py"],
+  "success_rate": {"backend": "100%", "frontend": "95% (1 bug found and fixed)"},
+  "seed_data_creation": "None persisted. Every TEST_ recording, reference, clip project and TEST_ collaborator was deleted. WBA members restored to []. GWA file tags were restored to their previous values (file_meta row may remain with the original tags).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run the pytest files with -n 0: pytest.ini uses xdist loadscope and the tests share module fixtures. To run Chromium with flags, launch it through page.context.browser.browser_type.launch(args=[...]) inside browser_automation. --use-fake-ui-for-media-stream plus --use-fake-device-for-media-stream gives getDisplayMedia an audio track. Real tab capture fails in headless with 'Could not start audio source'. The default tool browser also auto-accepts getDisplayMedia; for error paths, override it with add_init_script.",
+  "rca of the issue": "Recorder preview not playing: SaveForm used `const url = useRef(URL.createObjectURL(blob)).current; useEffect(() => () => URL.revokeObjectURL(url), [url])`. With React.StrictMode (index.js), the effect cleanup runs on the simulated unmount, which revoked the blob URL that the ref still held. useRef also created a new leaked blob URL on every render. Fix: `const [url,setUrl]=useState(''); useEffect(()=>{const u=URL.createObjectURL(blob); setUrl(u); return ()=>URL.revokeObjectURL(u)},[blob])`."
+}

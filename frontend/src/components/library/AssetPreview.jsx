@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import { Viewer } from "@/components/workspace/FilePreview";
 import { api, errText, fmtSize } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
-import { useAssetLink, mediaUrl } from "./assetsApi";
+import { useAssetLink } from "./assetsApi";
 import { TagEditor } from "./TagEditor";
 
 const btn = "h-9 px-4 rounded-full bg-white/10 hover:bg-white/20 text-sm font-semibold inline-flex items-center gap-1.5 transition-colors";
@@ -40,14 +40,14 @@ export const AssetPreview = ({ a, onRemoved }) => {
       <TagEditor key={a.id} tags={a.tags} onSave={(tags) => patch({ tags })} testid="asset-tags" />
       <div className="flex-1 min-h-[160px] grid place-items-center rounded-2xl bg-black/30 overflow-hidden p-4">
         {!a.accessible ? (
-          <p className="text-center text-sm text-white/60 max-w-xs" data-testid="asset-no-access"><Lock className="w-6 h-6 mx-auto mb-2 text-[#ff6b6b]" />The original lives in {a.source.world_title}, which you're not a member of. Ask an admin for access.</p>
+          <p className="text-center text-sm text-white/60 max-w-xs" data-testid="asset-no-access"><Lock className="w-6 h-6 mx-auto mb-2 text-[#ff6b6b]" />{a.source_deleted ? `The original in ${a.source.world_title} was deleted.` : `The original lives in ${a.source.world_title}, which you're not a member of. Ask an admin for access.`}</p>
         ) : link.isLoading ? <Loader2 className="w-8 h-8 animate-spin text-[#ff4757]" /> : link.error ? <p className="text-sm text-[#ff6b6b]" data-testid="asset-link-error">{errText(link.error)}</p>
           : link.data && <Viewer kind={a.type} url={link.data} name={a.name} />}
       </div>
       <div className="flex flex-wrap items-center gap-2">
-        {a.kind === "recording" && <>
-          <a href={mediaUrl(a.id, "&dl=1")} className={btn} data-testid="asset-download-webm"><Download className="w-4 h-4" /> WebM</a>
-          <a href={mediaUrl(a.id, "&format=wav&dl=1")} className={btn} data-testid="asset-download-wav"><Download className="w-4 h-4" /> WAV</a>
+        {a.kind === "recording" && link.data && <>
+          <a href={`${link.data}&dl=1`} className={btn} data-testid="asset-download-webm"><Download className="w-4 h-4" /> WebM</a>
+          <a href={`${link.data}&format=wav&dl=1`} className={btn} data-testid="asset-download-wav"><Download className="w-4 h-4" /> WAV</a>
         </>}
         {isRef && link.data && <a href={link.data} target="_blank" rel="noreferrer" className={btn} data-testid="asset-download-original"><Download className="w-4 h-4" /> Original</a>}
         {a.accessible && ["audio", "video"].includes(a.type) && <button onClick={clip} className="h-9 px-4 rounded-full bg-[#e0141b] text-sm font-bold inline-flex items-center gap-1.5" data-testid="asset-open-clip-studio"><Scissors className="w-4 h-4" /> Open in Clip Studio</button>}
