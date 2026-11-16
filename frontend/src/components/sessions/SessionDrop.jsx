@@ -9,8 +9,8 @@ import { useSessions } from "./sessionApi";
 import { SessionDetail } from "./SessionDetail";
 
 export const sessionSub = (s) => {
-  const parts = Object.entries(s.counts || {}).map(([k, n]) => `${n} ${k.toLowerCase()}`);
-  return [`${s.file_count || 0} files`, ...parts].join(" · ");
+  const parts = Object.entries(s.counts || {}).map(([k, n]) => `${k} ${n}`);
+  return [`${s.file_count || 0} file${s.file_count === 1 ? "" : "s"}`, ...parts].join(" · ");
 };
 
 const SessionList = ({ world, onOpen }) => {
@@ -41,7 +41,7 @@ const SessionList = ({ world, onOpen }) => {
               <span className="w-10 h-10 rounded-xl bg-[#e0141b]/15 text-[#ff4757] grid place-items-center shrink-0"><AudioLines className="w-5 h-5" /></span>
               <span className="min-w-0"><span className="block font-semibold truncate">{s.name}</span><span className="block text-xs text-white/50 truncate">{new Date(s.created_at).toLocaleDateString()} · {sessionSub(s)}</span></span>
             </button>
-            {(user?.role === "admin" || s.owner_id === user?.id) && <button onClick={() => remove(s)} className="opacity-0 group-hover:opacity-100 w-8 h-8 grid place-items-center rounded-full text-[#ff4757] hover:bg-[#ff4757]/10 transition-opacity" aria-label="Delete session" data-testid={`session-delete-${s.id}`}><Trash2 className="w-4 h-4" /></button>}
+            {(user?.role === "admin" || s.owner_id === user?.id) && <button onClick={() => remove(s)} className="sm:opacity-0 sm:group-hover:opacity-100 w-8 h-8 grid place-items-center rounded-full text-[#ff4757] hover:bg-[#ff4757]/10 transition-opacity" aria-label="Delete session" data-testid={`session-delete-${s.id}`}><Trash2 className="w-4 h-4" /></button>}
           </li>
         ))}
         {list.data && !list.data.length && <li className="text-sm text-white/40">No sessions yet. Start one above.</li>}

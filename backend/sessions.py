@@ -7,6 +7,7 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
+from urllib.parse import quote
 
 import requests
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
@@ -124,6 +125,8 @@ async def list_sessions(world: Optional[str] = None, user: dict = Depends(curren
 @router.post("/sessions")
 async def create_session(body: SessionIn, user: dict = Depends(current_user)):
     world = await require_world(body.world_slug)
+    if not body.name.strip():
+        raise HTTPException(400, "Give the session a name")
     day = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     root = world.get("dropbox_path", "").rstrip("/")
     doc = {"id": str(uuid.uuid4()), "world_slug": body.world_slug, "name": body.name.strip(), "notes": body.notes,
@@ -231,7 +234,9 @@ async def download_file(fid: str, token: str = ""):
         raise HTTPException(404, "Not found")
     f = await get_file(fid, user)
     data = await asyncio.to_thread(get_object, f["storage_path"])
-    return Response(content=data, media_type=f["content_type"], headers={"Content-Disposition": f'attachment; filename="{f["name"]}"'})
+    ascii_name = f["name"].encode("ascii", "ignore").decode() or "file"
+    disp = f'attachment; filename="{ascii_name}"; filename*=UTF-8\'\'{quote(f["name"])}'
+    return Response(content=data, media_type=f["content_type"], headers={"Content-Disposition": disp})
 
 
 async def sync_file(fid: str):

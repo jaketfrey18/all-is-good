@@ -1,0 +1,37 @@
+{
+  "summary": "Tested the GWA landing page and Session Drop on backend and frontend. Backend: 11 of 12 pytest tests pass. Every session and file endpoint works, including chunked upload, auto-sorting by type, matching download bytes, a 409 on sync, a 401 when signed out, and keeping collaborators out of admin sessions. One test fails: downloading a file whose name has non-latin-1 characters returns 500. Frontend: the GWA dark landing, hero image and all 5 tiles work. Open Canvas created a canvas because GWA had none, and I deleted it afterwards. Lyric Pad opened the existing lyrics, Clip Studio went to /media?kind=video&world=gwa because there are no clip projects, and Files & Media scrolls to the files section. The Session Drop drawer works end to end: create, upload 3 files sorted into Audio/Images/Docs as 'Saved in app', change category, download, delete, and the Dropbox note plus the 409 toast. Recent Sessions cards and View All open the right drawer views. The canvas Session Drop button shows the GWA sessions. /p/wba still shows workspace-page. At 390px the tiles sit in 2 columns with no overflow (scrollWidth 390).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/session-files/{id}/download", "issue": "Returns 500 (UnicodeEncodeError latin-1) when the filename has characters outside latin-1, such as an em dash, emoji or CJK text. Root cause: the raw name goes into Content-Disposition. Fix: send an ASCII fallback plus filename*=UTF-8''<urlquoted name>. Example: \"TEST_Ünïcode — song 🎵.wav\" fails."},
+      {"endpoint": "POST /api/sessions", "issue": "A name made only of spaces is accepted and saved as \"\", and the folder becomes '.../Sessions/YYYY-MM-DD file'. Fix: strip the name, then validate min_length (for example with a Pydantic field_validator)."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "SessionList", "issue": "The delete-session button is opacity-0 and only appears on group-hover, so touch and mobile users can't see it or delete sessions.", "selector": "[data-testid^=session-delete-]", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Session cards", "issues": ["Count labels aren't pluralised correctly: '1 images', '1 docs'."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_session_drop.py", "/app/test_reports/pytest/session_drop.xml"],
+  "action_items": [
+    "Fix the download Content-Disposition for non-latin-1 filenames (RFC 5987 filename*), which currently returns 500",
+    "Reject session names that are only whitespace",
+    "Make the session delete button visible on touch devices",
+    "Optional: fix singular/plural in sessionSub"
+  ],
+  "critical_code_review_comments": [
+    "sessions.py upload_chunk: the temp part file is keyed only by upload_id, not by session or user. Chunks also have to arrive in order, because a missing index can't be detected (the code appends without checking the expected index).",
+    "delete_session soft-deletes files but never removes the objects from storage, so storage grows over time (acceptable for now, but worth noting).",
+    "The download auth puts the JWT in the query string, so it can end up in logs and browser history. A short-lived signed download token would be better."
+  ],
+  "updated_files": ["/app/backend/tests/test_session_drop.py"],
+  "success_rate": {"backend": "92% (11/12)", "frontend": "100% of requested flows"},
+  "seed_data_creation": "None left behind. All TEST_ sessions and the TEST_ collaborator were deleted. Open Canvas created canvas 14d7bd95-18ee-4c45-87f0-8d0be98bec0b in GWA, which had 0 canvases; it was deleted (GET now returns 404). Lyric Pad opened existing lyrics 28335f32 without changing it.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run test_session_drop.py with -n 1, because tests in the module share state; pytest.ini uses xdist loadscope. Dropbox is read-only, so sync returning 409 is expected. GWA has no canvases or clip projects, so the Open Canvas tile creates one; delete it afterwards."
+}
