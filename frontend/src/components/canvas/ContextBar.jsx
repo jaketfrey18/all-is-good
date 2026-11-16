@@ -1,4 +1,5 @@
-import { Eye, Download, Trash2, Maximize2, Share2, PenLine, Group, Ungroup, Unlink } from "lucide-react";
+import { Eye, Download, Trash2, Maximize2, Share2, PenLine, Group, Ungroup, Unlink, Scissors } from "lucide-react";
+import { fileKind } from "@/lib/api";
 
 const B = ({ Icon, label, onClick, testid, danger }) => (
   <button onClick={onClick} className={`inline-flex items-center gap-1.5 h-9 px-3 rounded-full text-xs font-semibold transition-colors ${danger ? "text-[#ff6b6b] hover:bg-[#ff4757]/15" : "text-white/85 hover:bg-white/10"}`} data-testid={testid}>
@@ -25,6 +26,7 @@ export const ContextBar = ({ sel, items, vp, actions, noteColors }) => {
       {kind === "file" && (
         <>
           <B Icon={Eye} label="Preview" onClick={() => actions.preview(one)} testid="ctx-preview" />
+          {["video", "audio"].includes(fileKind(one.data.ext)) && <B Icon={Scissors} label="Clip" onClick={() => actions.clip(one)} testid="ctx-clip" />}
           <B Icon={Download} label="Download" onClick={() => actions.download(one)} testid="ctx-download" />
         </>
       )}

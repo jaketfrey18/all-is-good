@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { useParams, Link } from "react-router-dom";
+import { useParams, Link, useNavigate } from "react-router-dom";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { TopNav } from "@/components/TopNav";
@@ -51,6 +51,7 @@ function Workspace({ cv }) {
   const [expanded, setExpanded] = useState(null);
   const [lyricShare, setLyricShare] = useState(null);
   const act = useCanvasActions({ cv, stage, stageRef, setSel });
+  const navigate = useNavigate();
   useKeys({ sel, setSel, act, cv, setTool });
   const s = cv.state;
   const { vp } = stage;
@@ -113,6 +114,9 @@ function Workspace({ cv }) {
   const focusLyric = (item) => document.querySelector(`[data-item-id="${item.id}"] .ProseMirror`)?.focus();
 
   const actions = {
+    clip: async (it) => {
+      try { navigate(`/studio/${(await api.post("/clip-projects", { world_slug: s.world_slug, path: it.data.path })).data.id}`); } catch (e) { toast.error(errText(e)); }
+    },
     preview: (it) => setPreview(it.data), download, expand: (it) => setExpanded(it), editLyric: focusLyric, shareLyric: openLyricShare,
     noteColor: (it, c) => act.setData(it.id, { color: c }, true),
     renameFrame: (it) => { const n = window.prompt("Frame name", it.data.label); if (n) act.setData(it.id, { label: n }, true); },

@@ -1,13 +1,14 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, LayoutDashboard, PenLine, Trash2 } from "lucide-react";
+import { Plus, LayoutDashboard, PenLine, Trash2, Scissors } from "lucide-react";
 import { toast } from "sonner";
 import { api, errText } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 
 export const useCanvases = (world) => useQuery({ queryKey: ["canvases", world || "all"], queryFn: async () => (await api.get("/canvases", { params: world ? { world } : {} })).data });
 export const useLyrics = (world) => useQuery({ queryKey: ["lyrics", world || "all"], queryFn: async () => (await api.get("/lyrics", { params: world ? { world } : {} })).data });
+export const useClipProjects = (world) => useQuery({ queryKey: ["clip-projects", world || "all"], queryFn: async () => (await api.get("/clip-projects", { params: world ? { world } : {} })).data });
 
 export async function createCanvas(world_slug, name = "Canvas") {
   return (await api.post("/canvases", { world_slug, name })).data;
@@ -30,6 +31,7 @@ export const WorldLists = ({ world, worlds = [], showWorld }) => {
   const [target, setTarget] = useState(world || "");
   const canvases = useCanvases(world);
   const lyrics = useLyrics(world);
+  const clipsQ = useClipProjects(world);
   const label = (slug) => worlds.find((w) => w.slug === slug)?.title || slug;
   const pick = target || world;
 
@@ -70,6 +72,13 @@ export const WorldLists = ({ world, worlds = [], showWorld }) => {
           <ul className="space-y-2">
             {(lyrics.data || []).map((l) => <Item key={l.id} to={`/lyrics/${l.id}`} Icon={PenLine} title={l.title} sub={`${showWorld ? label(l.world_slug) + " · " : ""}${new Date(l.updated_at).toLocaleString()}`} onDelete={mine(l) ? () => remove("lyrics", l.id) : null} testid={`lyric-link-${l.id}`} />)}
             {lyrics.data && !lyrics.data.length && <li className="text-sm opacity-50">No lyric documents yet.</li>}
+          </ul>
+        </section>
+        <section data-testid="clip-project-list" className="md:col-span-2">
+          <div className={head}><h2 className="font-display text-xl font-bold">Clip Studio</h2><button onClick={() => navigate(`/media?kind=video${pick ? `&world=${pick}` : ""}`)} className={add} data-testid="new-clip-project-button"><Plus className="w-4 h-4" /> Pick a video or audio file</button></div>
+          <ul className="grid md:grid-cols-2 gap-2">
+            {(clipsQ.data || []).map((c) => <Item key={c.id} to={`/studio/${c.id}`} Icon={Scissors} title={c.name} sub={`${showWorld ? label(c.world_slug) + " · " : ""}${c.source?.name || ""}`} onDelete={mine(c) ? () => remove("clip-projects", c.id) : null} testid={`clip-project-link-${c.id}`} />)}
+            {clipsQ.data && !clipsQ.data.length && <li className="text-sm opacity-50">No clip projects yet.</li>}
           </ul>
         </section>
       </div>

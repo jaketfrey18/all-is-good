@@ -23,7 +23,7 @@ function VideoBody({ slug, d }) {
   );
 }
 
-function usePeaks(url, size) {
+export function usePeaks(url, size) {
   const [peaks, setPeaks] = useState(null);
   useEffect(() => {
     if (!url || size > 40 * 1024 * 1024) { return undefined; }

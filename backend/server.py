@@ -25,6 +25,7 @@ import dropbox_svc as dbx
 from auth import hash_password, verify_password, create_access_token
 from core import client, db, now_iso, current_user, current_admin
 import collab
+import clips
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -41,6 +42,8 @@ INDEXES: dict[str, list[IndexModel]] = {
     "canvases": [IndexModel([("id", ASCENDING)], name="id", unique=True), IndexModel([("world_slug", ASCENDING)], name="world")],
     "lyrics": [IndexModel([("id", ASCENDING)], name="id", unique=True), IndexModel([("world_slug", ASCENDING)], name="world")],
     "lyric_versions": [IndexModel([("lyric_id", ASCENDING), ("created_at", ASCENDING)], name="lyric_created")],
+    "clip_projects": [IndexModel([("id", ASCENDING)], name="id", unique=True)],
+    "clip_jobs": [IndexModel([("project_id", ASCENDING)], name="project")],
 }
 
 
@@ -317,6 +320,7 @@ async def dropbox_folders(path: str = "", _: dict = Depends(current_admin)):
 
 app.include_router(api)
 app.include_router(collab.router)
+app.include_router(clips.router)
 
 app.add_middleware(
     CORSMiddleware,

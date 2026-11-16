@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link, useSearchParams, useNavigate } from "react-router-dom";
+import { toast } from "sonner";
 import { useQuery } from "@tanstack/react-query";
 import { PanelLeftClose, PanelLeftOpen, Loader2, Download } from "lucide-react";
 import { TopNav } from "@/components/TopNav";
@@ -14,6 +15,10 @@ const chip = (on) => `h-9 px-4 rounded-full text-sm font-semibold border transit
 
 function PreviewPane({ file }) {
   const { data: url, isLoading } = useTempLink(file?.project_slug, file?.path, !!file);
+  const navigate = useNavigate();
+  const openClip = async () => {
+    try { navigate(`/studio/${(await api.post("/clip-projects", { world_slug: file.project_slug, path: file.path })).data.id}`); } catch (e) { toast.error(e?.response?.status === 401 ? "Sign in to use Clip Studio" : "Couldn't open in Clip Studio"); }
+  };
   if (!file) return <div className="h-full grid place-items-center text-white/30 text-sm" data-testid="media-preview-empty">Select a file</div>;
   return (
     <div className="h-full flex flex-col gap-4 p-6" data-testid="media-preview-pane">
@@ -24,7 +29,10 @@ function PreviewPane({ file }) {
       <div className="flex-1 min-h-0 grid place-items-center rounded-2xl bg-black/30 overflow-hidden">
         {isLoading ? <Loader2 className="w-8 h-8 animate-spin text-[#ff4757]" /> : url && <Viewer kind={fileKind(file.ext)} url={url} name={file.name} />}
       </div>
-      <Link to={`/p/${file.project_slug}`} className="text-sm text-[#ff6b6b] hover:underline" data-testid="media-open-world">Open world →</Link>
+      <div className="flex items-center gap-4">
+        <Link to={`/p/${file.project_slug}`} className="text-sm text-[#ff6b6b] hover:underline" data-testid="media-open-world">Open world →</Link>
+        {["video", "audio"].includes(fileKind(file.ext)) && <button onClick={openClip} className="h-9 px-4 rounded-full bg-[#e0141b] text-sm font-bold" data-testid="media-open-clip-studio">Open in Clip Studio</button>}
+      </div>
     </div>
   );
 }

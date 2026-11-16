@@ -7,6 +7,7 @@ import MediaPage from "@/pages/MediaPage";
 import ToolsPage from "@/pages/ToolsPage";
 import CanvasPage from "@/pages/CanvasPage";
 import LyricPage from "@/pages/LyricPage";
+import ClipStudio from "@/pages/ClipStudio";
 import Workspace from "@/pages/Workspace";
 import AdminLogin from "@/pages/AdminLogin";
 import AdminPanel from "@/pages/AdminPanel";
@@ -34,6 +35,7 @@ function App() {
           <Route path="/tools" element={<RequireUser><ToolsPage /></RequireUser>} />
           <Route path="/canvas/:id" element={<RequireUser><CanvasPage /></RequireUser>} />
           <Route path="/lyrics/:id" element={<RequireUser><LyricPage /></RequireUser>} />
+          <Route path="/studio/:id" element={<RequireUser><ClipStudio /></RequireUser>} />
           <Route path="/login" element={<AdminLogin />} />
           <Route path="/admin/login" element={<AdminLogin />} />
           <Route path="/admin" element={<RequireUser admin><AdminPanel /></RequireUser>} />
