@@ -133,7 +133,7 @@ function Studio({ cp }) {
           <Timeline duration={duration} time={time} zoom={zoom} clip={clip} mark={mark} onSeek={seek} onTrim={onTrim} onTrimEnd={() => { trimming.current = false; }} />
         </section>
         <aside className="w-full lg:w-80 shrink-0 rounded-2xl bg-[#1c1617] border border-white/10 p-4 overflow-y-auto space-y-5" data-testid="clip-side-panel">
-          {mode === "Clip" ? <ClipInspector clip={clip} source={p.source} mark={mark} time={time} onUpdate={update} onLive={live} onSplit={split} onAddSegment={addSegment} onSetMark={(k, t) => setMark((m) => ({ ...m, [k]: t }))} /> : <NextPhase title={mode} />}
+          {mode === "Clip" ? <ClipInspector clip={clip} source={p.source} mark={mark} time={time} onUpdate={update} onLive={live} onSnapshot={() => cp.change(() => ({}))} onSplit={split} onAddSegment={addSegment} onSetMark={(k, t) => setMark((m) => ({ ...m, [k]: t }))} /> : <NextPhase title={mode} />}
           <JobList pid={p.id} />
         </aside>
       </div>

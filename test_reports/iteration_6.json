@@ -1,0 +1,53 @@
+{
+  "summary": "Iteration 6: checked the Yjs canvas sync fix and Clip Studio Phase 1, both backend and frontend. CANVAS: all requested checks pass. Admin and a TEST collaborator in two browser contexts: a note added by admin showed up live for the collaborator; adds made at the same moment by both users (a note and a frame) were both kept; a move by admin showed up for the collaborator; a delete by the collaborator showed up for admin; the collaborator's zoom to 173% left admin at 100% with item positions unchanged; reloading restored the items, and each user's viewport came back from localStorage. Live typing in notes syncs. Undo/redo of moves syncs to the other user. Clicking a note body with the link tool creates an edge, and undo/redo of the edge works. The canvas context bar 'Clip' button opens /studio. CLIP STUDIO UI: Media 'Open in Clip Studio' opens /studio/<id> with Clip 1 (video 1:32, audio 0:17.79). Timeline scrub, the I/O keys with the amber range, ArrowRight and frame-back, New clip from In/Out, 9:16 (preview reframes), S split, segment reorder, rename, queue reorder/duplicate/delete, ctrl+z and ctrl+shift+z all work, and everything survives a reload. The Captions and AI Assist tabs show 'next phase' notes. The audio waveform renders, MP4 is disabled for audio, and trim handles plus undo work. EXPORT: 2 clips as MP4 to Download went queued, running, done with download links; the files are real H.264 1080x1920 MP4s. Audio MP3 export gave a 1.01s file for a 0.41 to 1.42 trim, which is correct. The Dropbox destination ends in error with a clear files.content.write message and still offers a download; no upload is attempted. Tools page lists projects. A collaborator gets 'Clip project not found'. BACKEND: new tests/test_clip_studio.py, 9 of 10 pass. It covers 403 for paths outside the world, 401 when unauthenticated, 404 for a collaborator on GET/source/jobs/PUT/DELETE/list, persistence, MP4 export plus ffprobe, download token rules (none/garbage/other user), Dropbox error with downloadable=true, 403 for a Dropbox folder outside the world, MP3 trim duration, 400 for a bad format and 422 for empty clip_ids. Full regression: 52 passed, 1 skipped. FAILURE: exported clip duration and A/V alignment are off (details below).",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "POST /api/clip-projects/{id}/export (clips.build_cmd)", "issue": "Exported duration does not match the sum of segments, and audio/video drift. Source '05 VishnuThrowsTejas.mp4' is 1 fps. Segments [1-2.5, 4-5] (2.5s) gave a 3.0s file (video 2.0s vs audio 1.5s for segment 1). Segments [13.8-18.4, 9.2-13.8] (9.2s) gave an 11.0s file: video stream starts at 0.2s, audio is 9.8s, and concat pads audio with silence. This reproduced every time on both the Dropbox URL and a local copy. Cause: each segment input is cut only with input -ss/-to. Nothing trims frames to the exact segment length and there is no setpts=PTS-STARTPTS, so the last frame's duration and the start offset leak into concat. Fix: per segment use '[i:v]...,fps=30,trim=duration=L,setpts=PTS-STARTPTS' and '[i:a]atrim=duration=L,asetpts=PTS-STARTPTS', and/or add -t L on the output side. Optionally check the output duration against the expected total.", "priority": "HIGH"},
+      {"endpoint": "run_job (FFmpeg reading Dropbox temp link over HTTP)", "issue": "INTERMITTENT, 1 of 7 MP4 renders: a 9.2s two-segment clip came out as 5.8s with 4.6s of audio, effectively missing one segment, yet ffmpeg exited 0 and the job showed 'done'. 6 later renders of the same clip all gave 11.0s, so I could not reproduce it. Likely cause: two concurrent HTTP reads of the same temp link where one gets truncated. Suggest '-reconnect 1 -reconnect_streamed 1 -reconnect_on_network_error 1' on HTTP inputs, or downloading the source once to a temp file, plus checking the output duration and marking the job as error on a mismatch.", "priority": "MEDIUM"}
+    ],
+    "minor": [
+      {"endpoint": "run_job error path", "issue": "When a job fails after rendering (Dropbox scope error), 'size' is not stored. The UI download link shows an icon with no size."},
+      {"endpoint": "POST /api/clip-projects", "issue": "Every 'Open in Clip Studio' or canvas 'Clip' click creates a new duplicate project for the same file. I ended up with 3 '05 VishnuThrowsTejas' entries. Consider reusing the user's existing project for the same path, or offering 'open existing'."},
+      {"endpoint": "DELETE /api/clip-projects/{id}", "issue": "clip_jobs rows and the backend/exports/*.mp4/mp3 files are not removed, and the exports dir is never cleaned up (14 files now), so disk use grows without limit."},
+      {"endpoint": "PUT /api/clip-projects/{id}", "issue": "'clips' is an untyped list with no Pydantic model for segments, aspect or crop. Malformed data is saved and then fails later inside the export job (KeyError, ValueError)."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "ClipInspector sliders / name input", "issue": "From code review, so likely rather than confirmed: onValueCommit calls onUpdate({}), which pushes ref.current.clips. After a mouse drag that value is already the changed state, so undo cannot revert a crop/volume drag. With the keyboard, each step is its own undo entry (verified: 4 ArrowLeft to 80%, undo gave 85%). Renaming a clip via onLive never creates an undo entry. Fix: snapshot clips on pointer-down/focus and push that snapshot on commit.", "selector": "[data-testid=clip-volume], [data-testid=clip-crop-zoom], [data-testid=clip-name-input]", "priority": "LOW"},
+      {"component": "ClipQueue (audio project)", "issue": "Audio-only clips show '16:9' in the queue subtitle.", "selector": "[data-testid=clip-queue-item-0]", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Clip Studio inspector", "issues": ["Section labels (IN / OUT, SEGMENTS, CROP ZOOM, VOLUME) are 10px text at white/45 on a near-black background, which is low contrast.", "The 'Saved' indicator at the top right is 11px white/45 and easy to miss."]},
+      {"screen": "Export dialog", "issues": ["The description always reads '1080p H.264' even when MP3 or WAV is selected."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_clip_studio.py", "/app/backend/tests/test_canvas_crdt.py", "/app/test_reports/pytest/clip_studio.xml", "/app/test_reports/pytest/regression.xml"],
+  "action_items": [
+    "HIGH: Fix the segment timing in clips.build_cmd: per-segment trim/atrim to the exact length plus setpts/asetpts=PTS-STARTPTS, so the output duration equals the sum of segments and A/V stays aligned. Re-run tests/test_clip_studio.py::test_06 (expects 2.5s ± 0.3).",
+    "MEDIUM: Make the HTTP source reads robust (ffmpeg reconnect flags or a local temp download), and check the output duration so a truncated render fails instead of showing 'done'.",
+    "Store size on the error path when the file exists, so the download link shows it.",
+    "Remove clip_jobs and export files when a project is deleted, and add TTL cleanup of backend/exports.",
+    "Avoid creating a duplicate project on every 'Open in Clip Studio'.",
+    "Add Pydantic models for clips/segments in ProjectUpdate.",
+    "Fix slider/rename undo snapshots, hide the aspect label for audio clips, and make the export description depend on the selected format.",
+    "Raise the contrast of the inspector labels."
+  ],
+  "critical_code_review_comments": [
+    "clips.py build_cmd: no trim/setpts per segment, which causes the duration and A/V errors above.",
+    "clips.py run_job: ffmpeg return code 0 is treated as success with no check that the output duration matches the expected total.",
+    "clips.py: RUN_LOCK is a global Semaphore(1), so every user's export is serialized. That is fine for MVP but the queue gets long with many clips.",
+    "clips.py download: the JWT goes in the query string (it ends up in logs and browser history). Consider a short-lived signed download token.",
+    "useClipProject: canUndo/canRedo come from refs and only update via the bump state. That works now, but is fragile.",
+    "collab.py: still no cleanup of lyric docs attached to deleted canvases (carried over from iteration 5)."
+  ],
+  "updated_files": ["/app/backend/tests/test_clip_studio.py"],
+  "success_rate": {"backend": "95% (61/62 incl. regression; 9/10 clip tests)", "frontend": "100% of requested flows functional; export duration accuracy bug is backend"},
+  "test_credentials": "Admin allisgoodworld@yahoo.com / CookedWorld#2026 (from /app/memory/test_credentials.md). TEST_ collaborators were created via the API and deleted afterwards.",
+  "seed_data_creation": "None left behind. I deleted all clip projects (my 3 plus the main agent's TEST_audio, TEST_video and 'Durgavijayam_01 (1)'), both TEST canvases (TEST_live, TEST_clipcv), my TEST collaborator, and 2 leftover test_ccollab/test_coutsider users. Not cleaned: orphan clip_jobs rows and backend/exports files, because there is no API for that. No Dropbox writes were made.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run 'pytest tests/test_clip_studio.py -n 0' (it is sequential; -n 0 overrides xdist from pytest.ini). test_06 asserts the 9:16 clip duration is 2.5s ± 0.3 and fails until the build_cmd trim fix lands. The source video is 1 fps (FINAL IMAGES/05 VishnuThrowsTejas.mp4, 92s), which exposes timing bugs well. Headless Chromium shows a black video preview, so verify renders with imageio_ffmpeg on the downloaded files. For two-context canvas tests, set localStorage 'aig_admin_token' through add_init_script on new contexts. Use mouse moves in steps when dragging items. Click canvas-fit before clicking items seeded off-screen. The context-bar 'Clip' button uses SPA navigation, so use wait_for_timeout rather than wait_for_url.",
+  "rca of the issue": "Export duration mismatch: with input-side -ss/-to on a low-fps H.264 source, each segment's last decoded frame keeps its full duration (1s at 1 fps) and the first frame PTS is offset (0.2 to 0.8s). Without trim/setpts, concat sums the longer video length and pads audio with silence. Reproduction: create a clip with segments [1-2.5, 4-5] at 9:16 on the 1 fps source, export MP4, run ffmpeg -i on the result: Duration 3.0 instead of 2.5. Mitigation: per-segment trim=duration and setpts=PTS-STARTPTS (and the audio equivalents), plus an output duration check."
+}

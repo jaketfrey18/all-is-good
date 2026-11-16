@@ -1,25 +1,23 @@
-# ALL IS GOOD — Cooked World
+# ALL IS GOOD × COOKED WORLD — PRD
 
-## Original problem statement
-User uploaded a landing mockup (no text spec) and said "Start the task now". Mockup: nav (Home/Projects/Archive/Studio/Contact + search/bell/help/profile), warm coral/cream illustrated hero (sun, clouds, red swoosh, LA skyline + palms, golden wireframe terrain, flowers), fortune-cookie search bar "All is good. Search the Cooked World..." + ENTER, category row PROJECTS / WORLDS / MEDIA / PRESENTATIONS, 3D coverflow of GWA, Yakshalokaus, Jasmin's Journey, WBA, Riley's Magical Meals.
-User choices: full Dropbox OAuth + real file browsing/preview/search; JWT admin password login (single seeded admin); layered CSS/SVG parallax hero; agent picks fonts. Project images not supplied yet (AI-generated covers used).
+## Original problem statement (latest, abridged in user's words)
+"Continue building the existing Cooked World application into a fully functional, collaborative creative workspace powered by All Is Good… five core systems: Google Login and user permissions; Live Canvas workspace; Real-time collaborative Lyric Pad; Basic functional video/audio editor (Clip Studio); Session Drop with automatic Dropbox organization… Build functionality, not another visual prototype." Earlier directives: homepage light ink/red style with 3D carousel + frosted search, nav only Worlds · Media · Tools; dark dotted infinite canvas; Lyric Pad with CRDT real-time; Clip Studio (Clip | Captions | AI Assist) with FFmpeg exports; references for Clip Studio UI and a World landing page (GWA — The Studio) were supplied.
 
 ## Architecture
-- Backend FastAPI (server.py, auth.py, dropbox_svc.py), MongoDB collections: users, projects, connections (encrypted Dropbox refresh token), oauth_states (TTL), login_attempts
-- Frontend React + Swiper coverflow + framer-motion parallax SVG hero; fonts Cabinet Grotesk / Manrope / JetBrains Mono
-- Public: projects, project file browsing scoped to the linked Dropbox folder only, temp links, thumbnails, global search (projects + files in linked folders)
-- Admin (/admin): Dropbox connect/disconnect, project CRUD, Dropbox folder picker
+- FastAPI (server.py, core.py, auth.py, dropbox_svc.py, collab.py, clips.py) + MongoDB; React (CRA) + Tailwind/shadcn
+- Real-time: custom Yjs websocket provider ↔ FastAPI websocket rooms using pycrdt (server merges + persists CRDT state): /api/ws/lyrics/{id}, /api/ws/canvas/{id}
+- Lyric editor: TipTap v2 + Collaboration + CollaborationCursor
+- Media: Dropbox (OAuth refresh token encrypted), FFmpeg via imageio-ffmpeg; exports to backend/exports, background asyncio jobs with progress
+- Auth: JWT email/password; admin seeded from env (allisgoodworld@yahoo.com); admin creates collaborator accounts
 
-## Personas
-- Visitors browsing the studio's worlds/projects; studio admin managing projects & Dropbox mapping
-
-## Implemented (2026-11-15)
-- Landing page matching mockup, Projects bento, Archive list, Studio/Contact (placeholder copy), Search page, Workspace with file grid/breadcrumbs/search/preview (image/video/audio/pdf)
-- JWT admin login (allisgoodworld@yahoo.com), brute-force lockout, admin panel
-- Dropbox OAuth (offline refresh token, encrypted at rest) — awaiting DROPBOX_APP_KEY / DROPBOX_APP_SECRET
-- Tested: iteration_1 (backend 25/27 → both failures fixed, mobile overflow fixed)
+## Implemented
+- 2026-11-15: portfolio, Dropbox OAuth (new-tab flow), project↔folder mapping, admin
+- 2026-11-16: homepage restyle (ink/red, logo cropped from approved reference), Worlds/Media/Tools nav; Media search (name/type/folder, world filter, collapsible results, preview); collaborators + per-item sharing; dark canvas (pan/zoom, notes, frames, Dropbox drag-drop, image/video/audio-waveform/doc cards, move/resize/group/connect, contextual bar, undo/redo, multiple canvases, presence) synced live via Yjs; Lyric Pad (real-time multiuser, cursors, sections, undo/redo, versions, .txt export, Dropbox backup, focus mode); Clip Studio phase 1 (preview, timeline scrub/zoom/In-Out/trim handles, split, segments, clip queue, aspect 16:9/9:16/1:1/4:5, crop, volume/mute/fades, autosave, MP4/MP3/WAV batch export with progress, Dropbox destination)
+- Tests: iteration_5 (lyrics realtime pass), iteration_6 (canvas live sync + Clip Studio pass; duration drift fixed afterwards and verified manually)
 
 ## Backlog
-- P0: add Dropbox keys, connect, link folders per project
-- P1: replace AI covers with real project images (upload in admin); real Studio/Contact copy
-- P2: contact form, featured video on workspace header
+- P0: Google login (Emergent-managed) + Owner/Editor/Viewer roles per World, email invites, make world files private to members
+- P0: Dropbox write permission (user: tick files.content.write, reconnect) for backups/exports/Session Drop
+- P1: Session Drop + Sessions records; World landing page (reference GWA — The Studio) with Open Canvas / Lyric Pad / Clip Studio / Session Drop / Files
+- P1: Clip Studio: timeline thumbnails, video waveform, local upload, text overlays, assembled sequence export; Lyric PDF export
+- P2: Captions (transcription, editor, styles, SRT/VTT, burn-in); AI Assist (long-to-short, hooks, reframing)

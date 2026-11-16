@@ -8,14 +8,14 @@ const small = "h-8 px-3 rounded-full bg-white/10 hover:bg-white/20 text-xs font-
 
 const Row = ({ label, children }) => <div className="space-y-2"><p className={lbl}>{label}</p>{children}</div>;
 
-export const ClipInspector = ({ clip, source, mark, time, onUpdate, onLive, onSplit, onAddSegment, onSetMark }) => {
+export const ClipInspector = ({ clip, source, mark, time, onUpdate, onLive, onSnapshot, onSplit, onAddSegment, onSetMark }) => {
   if (!clip) return null;
   const segs = clip.segments;
   const moveSeg = (i, d) => { const s = [...segs]; [s[i], s[i + d]] = [s[i + d], s[i]]; onUpdate({ segments: s }); };
   const crop = clip.crop || { zoom: 1, x: 0.5, y: 0.5 };
   return (
     <div className="space-y-5" data-testid="clip-inspector">
-      <input value={clip.name} onChange={(e) => onLive({ name: e.target.value })} className="w-full bg-transparent outline-none font-display text-xl font-bold text-white border-b border-white/10 pb-1 focus:border-[#ff4757]" data-testid="clip-name-input" aria-label="Clip name" />
+      <input value={clip.name} onFocus={onSnapshot} onChange={(e) => onLive({ name: e.target.value })} className="w-full bg-transparent outline-none font-display text-xl font-bold text-white border-b border-white/10 pb-1 focus:border-[#ff4757]" data-testid="clip-name-input" aria-label="Clip name" />
       <Row label="In / Out">
         <div className="flex flex-wrap gap-2">
           <button className={small} onClick={() => onSetMark("in", time)} data-testid="clip-set-in">In {mark.in != null ? fmtTime(mark.in) : "—"}</button>
@@ -44,17 +44,17 @@ export const ClipInspector = ({ clip, source, mark, time, onUpdate, onLive, onSp
               {ASPECTS.map((a) => <button key={a} onClick={() => onUpdate({ aspect: a })} className={`h-9 rounded-lg text-xs font-bold ${clip.aspect === a ? "bg-[#e0141b] text-white" : "bg-white/10 text-white/75 hover:bg-white/20"}`} data-testid={`clip-aspect-${a.replace(":", "x")}`}>{a}</button>)}
             </div>
           </Row>
-          <Row label={`Crop zoom ${crop.zoom.toFixed(2)}×`}><Slider min={1} max={3} step={0.05} value={[crop.zoom]} onValueChange={([v]) => onLive({ crop: { ...crop, zoom: v } })} onValueCommit={() => onUpdate({})} data-testid="clip-crop-zoom" /></Row>
+          <Row label={`Crop zoom ${crop.zoom.toFixed(2)}×`}><Slider min={1} max={3} step={0.05} value={[crop.zoom]} onValueChange={([v]) => onLive({ crop: { ...crop, zoom: v } })} onPointerDownCapture={onSnapshot} onKeyDownCapture={onSnapshot} data-testid="clip-crop-zoom" /></Row>
           <Row label="Reposition X / Y">
-            <Slider min={0} max={1} step={0.01} value={[crop.x]} onValueChange={([v]) => onLive({ crop: { ...crop, x: v } })} onValueCommit={() => onUpdate({})} data-testid="clip-crop-x" />
-            <Slider min={0} max={1} step={0.01} value={[crop.y]} onValueChange={([v]) => onLive({ crop: { ...crop, y: v } })} onValueCommit={() => onUpdate({})} data-testid="clip-crop-y" />
+            <Slider min={0} max={1} step={0.01} value={[crop.x]} onValueChange={([v]) => onLive({ crop: { ...crop, x: v } })} onPointerDownCapture={onSnapshot} onKeyDownCapture={onSnapshot} data-testid="clip-crop-x" />
+            <Slider min={0} max={1} step={0.01} value={[crop.y]} onValueChange={([v]) => onLive({ crop: { ...crop, y: v } })} onPointerDownCapture={onSnapshot} onKeyDownCapture={onSnapshot} data-testid="clip-crop-y" />
           </Row>
         </>
       )}
       <Row label={`Volume ${Math.round((clip.volume ?? 1) * 100)}%`}>
         <div className="flex items-center gap-3">
           <button onClick={() => onUpdate({ muted: !clip.muted })} className="w-9 h-9 grid place-items-center rounded-full bg-white/10 text-white" aria-label="Mute" data-testid="clip-mute">{clip.muted ? <VolumeX className="w-4 h-4 text-[#ff6b6b]" /> : <Volume2 className="w-4 h-4" />}</button>
-          <Slider className="flex-1" min={0} max={2} step={0.05} value={[clip.volume ?? 1]} onValueChange={([v]) => onLive({ volume: v })} onValueCommit={() => onUpdate({})} data-testid="clip-volume" />
+          <Slider className="flex-1" min={0} max={2} step={0.05} value={[clip.volume ?? 1]} onValueChange={([v]) => onLive({ volume: v })} onPointerDownCapture={onSnapshot} onKeyDownCapture={onSnapshot} data-testid="clip-volume" />
         </div>
       </Row>
       <Row label="Fade in / out (seconds)">

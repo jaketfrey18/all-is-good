@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="1" skipped="0" tests="10" time="16.266" timestamp="2026-11-16T04:21:04.222360+00:00" hostname="agent-env-adbd865d-3d51-484e-8776-37b353bd8563"><testcase classname="tests.test_clip_studio.TestClipStudio" name="test_01_reject_outside_world" time="1.386" /><testcase classname="tests.test_clip_studio.TestClipStudio" name="test_02_unauth" time="0.126" /><testcase classname="tests.test_clip_studio.TestClipStudio" name="test_03_create_video" time="1.459" /><testcase classname="tests.test_clip_studio.TestClipStudio" name="test_04_collab_no_access" time="0.871" /><testcase classname="tests.test_clip_studio.TestClipStudio" name="test_05_update_persist" time="0.258" /><testcase classname="tests.test_clip_studio.TestClipStudio" name="test_06_export_mp4" time="5.395"><failure message="AssertionError: 3.0&#10;assert 0.5 &lt; 0.3&#10; +  where 0.5 = abs((3.0 - 2.5))">self = &lt;test_clip_studio.TestClipStudio object at 0xf86f60685e90&gt;
+tmp_path = PosixPath('/tmp/pytest-of-root/pytest-1/test_06_export_mp40')
+
+    def test_06_export_mp4(self, tmp_path):
+        pid = self.st["video"]["id"]
+        r = requests.post(f"{BASE_URL}/api/clip-projects/{pid}/export", headers=H(self.st["admin"]), json={"clip_ids": ["c1test", "c2test"], "format": "mp4", "destination": "download"})
+        assert r.status_code == 200, r.text
+        jobs = r.json()
+        assert len(jobs) == 2
+        done, prog = wait_jobs(self.st["admin"], pid, [j["id"] for j in jobs])
+        print("progress seen", prog)
+        for j in done:
+            assert j["status"] == "done", j
+        self.st["job"] = done[0]["id"]
+        # download &amp; probe
+        for j, (w, h, exp) in zip(done, [(1080, 1920, 2.5), (1920, 1080, None)]):
+            d = requests.get(f"{BASE_URL}/api/clip-jobs/{j['id']}/download", params={"token": self.st["admin"]})
+            assert d.status_code == 200
+            f = tmp_path / f"{j['id']}.mp4"
+            f.write_bytes(d.content)
+            dur, info = probe_file(str(f))
+            print(j["filename"], dur, re.findall(r"Stream #.*", info))
+            assert "h264" in info and f"{w}x{h}" in info
+            if exp:
+&gt;               assert abs(dur - exp) &lt; 0.3, dur
+E               AssertionError: 3.0
+E               assert 0.5 &lt; 0.3
+E                +  where 0.5 = abs((3.0 - 2.5))
+
+tests/test_clip_studio.py:128: AssertionError</failure></testcase><testcase classname="tests.test_clip_studio.TestClipStudio" name="test_07_download_token" time="0.408" /><testcase classname="tests.test_clip_studio.TestClipStudio" name="test_08_dropbox_dest_error" time="2.094" /><testcase classname="tests.test_clip_studio.TestClipStudio" name="test_09_audio_mp3" time="3.475" /><testcase classname="tests.test_clip_studio.TestClipStudio" name="test_10_bad_format" time="0.666" /></testsuite></testsuites>

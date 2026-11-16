@@ -54,7 +54,7 @@ export const ExportDialog = ({ open, onOpenChange, project, clipIds, worldFolder
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="bg-[#1f1819] border-white/10 text-white max-w-lg max-h-[90vh] overflow-y-auto" data-testid="clip-export-dialog">
         <DialogTitle className="font-display text-2xl font-extrabold">Export {clipIds.length} clip{clipIds.length === 1 ? "" : "s"}</DialogTitle>
-        <DialogDescription className="text-white/55">1080p H.264. Originals are never changed.</DialogDescription>
+        <DialogDescription className="text-white/55">{format === "mp4" ? "1080p H.264 video." : format === "mp3" ? "MP3 audio, 256 kbps." : "WAV audio, 16-bit."} Originals are never changed.</DialogDescription>
         <p className="text-xs font-mono uppercase tracking-[0.18em] text-white/45">Format</p>
         <div className="grid grid-cols-3 gap-2">
           {[["mp4", "MP4 video"], ["mp3", "MP3 audio"], ["wav", "WAV audio"]].map(([k, l]) => <button key={k} disabled={k === "mp4" && !video} onClick={() => setFormat(k)} className={`${opt(format === k)} disabled:opacity-30`} data-testid={`clip-export-format-${k}`}>{l}</button>)}

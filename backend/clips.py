@@ -139,19 +139,20 @@ def build_cmd(url: str, clip: dict, src: dict, fmt: str, out: str) -> tuple:
     audio = src["has_audio"]
     cmd = [FFMPEG, "-hide_banner", "-y", "-nostats", "-progress", "pipe:1"]
     for s in segs:
-        cmd += ["-ss", f"{s['start']:.3f}", "-to", f"{s['end']:.3f}", "-i", url]
+        cmd += ["-ss", f"{s['start']:.3f}", "-t", f"{s['end'] - s['start']:.3f}", "-i", url]
     parts, labels = [], ""
     W, H = SIZES.get(clip.get("aspect", "16:9"), SIZES["16:9"])
     c = clip.get("crop") or {}
     z, px, py = max(1.0, float(c.get("zoom", 1))), float(c.get("x", 0.5)), float(c.get("y", 0.5))
     sw, sh = int(W * z) // 2 * 2, int(H * z) // 2 * 2
     vol = 0 if clip.get("muted") else float(clip.get("volume", 1))
-    for i in range(len(segs)):
+    for i, s in enumerate(segs):
+        d = s["end"] - s["start"]
         if video:
-            parts.append(f"[{i}:v]scale={sw}:{sh}:force_original_aspect_ratio=increase,crop={W}:{H}:(iw-{W})*{px:.3f}:(ih-{H})*{py:.3f},setsar=1,fps=30[v{i}]")
+            parts.append(f"[{i}:v]fps=30,scale={sw}:{sh}:force_original_aspect_ratio=increase,crop={W}:{H}:(iw-{W})*{px:.3f}:(ih-{H})*{py:.3f},setsar=1,tpad=stop_mode=clone:stop_duration={d:.3f},trim=duration={d:.3f},setpts=PTS-STARTPTS[v{i}]")
             labels += f"[v{i}]"
         if audio:
-            parts.append(f"[{i}:a]aresample=48000,aformat=channel_layouts=stereo,volume={vol:.2f}[a{i}]")
+            parts.append(f"[{i}:a]aresample=48000,aformat=channel_layouts=stereo,volume={vol:.2f},apad,atrim=duration={d:.3f},asetpts=PTS-STARTPTS[a{i}]")
             labels += f"[a{i}]"
     n = len(segs)
     parts.append(f"{labels}concat=n={n}:v={1 if video else 0}:a={1 if audio else 0}" + ("[vc]" if video else "") + ("[ac]" if audio else ""))
