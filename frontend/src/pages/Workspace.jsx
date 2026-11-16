@@ -2,7 +2,9 @@ import { useState } from "react";
 import { useParams, useSearchParams, Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft, FolderOpen } from "lucide-react";
-import { Nav } from "@/components/Nav";
+import { TopNav } from "@/components/TopNav";
+import { WorldTools } from "@/components/WorldTools";
+import { useAuth } from "@/context/AuthContext";
 import { FileBrowser } from "@/components/workspace/FileBrowser";
 import { FilePreview } from "@/components/workspace/FilePreview";
 import { api } from "@/lib/api";
@@ -36,12 +38,13 @@ export default function Workspace() {
   const [file, setFile] = useState(null);
   const path = params.get("path") || "";
   const setPath = (p) => setParams(p ? { path: p } : {});
+  const { user } = useAuth();
   const project = useQuery({ queryKey: ["project", slug], queryFn: async () => (await api.get(`/projects/${slug}`)).data, retry: false });
   const dbx = useQuery({ queryKey: ["dbx-status"], queryFn: async () => (await api.get("/dropbox/status")).data });
 
   return (
     <div className="min-h-screen bg-[#fff8f0]" data-testid="workspace-page">
-      <div className="sticky top-0 z-30"><Nav tone="solid" /></div>
+      <div className="sticky top-0 z-30 bg-[#fff6f2]/85 backdrop-blur-xl border-b border-[#f1d6cc]"><TopNav active="worlds" /></div>
       <main className="max-w-[1320px] mx-auto px-5 sm:px-10 pt-8 pb-24">
         <Link to="/" className="inline-flex items-center gap-2 font-mono text-sm hover:text-[#e8262f] mb-6" data-testid="workspace-back-link"><ArrowLeft className="w-4 h-4" /> back to the cooked world</Link>
         {project.isLoading && <p className="font-mono text-sm">cooking…</p>}
@@ -49,6 +52,7 @@ export default function Workspace() {
         {project.data && (
           <div className="space-y-12 rise">
             <Header p={project.data} />
+            {user && <WorldTools slug={slug} />}
             <section>
               <h2 className="font-display text-lg font-bold uppercase tracking-[0.2em] mb-6">Workspace files</h2>
               {!project.data.dropbox_path ? (

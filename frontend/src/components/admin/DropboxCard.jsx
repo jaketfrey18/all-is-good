@@ -57,6 +57,9 @@ export const DropboxCard = () => {
             <p className="text-sm text-white/75" data-testid="dropbox-account">{data.account_name}<br /><span className="font-mono text-xs">{data.account_email}</span></p>
           )}
           {!data?.configured && <p className="text-sm text-white/70">Add the Dropbox App Key and App Secret to enable connecting.</p>}
+          {data?.connected && !data?.can_write && (
+            <p className="text-xs text-white/60" data-testid="dropbox-write-hint">Saving to Dropbox (lyric backups, clip exports) needs the files.content.write permission. Tick it in your Dropbox app's Permissions tab, Submit, then Disconnect and Connect again.</p>
+          )}
           {data?.missing_scopes?.length > 0 && (
             <p className="text-sm text-[#ffb59a]" data-testid="dropbox-missing-scopes">Missing permissions: {data.missing_scopes.join(", ")}. Turn them on in your Dropbox app's Permissions tab, click Submit, then disconnect and connect again.</p>
           )}

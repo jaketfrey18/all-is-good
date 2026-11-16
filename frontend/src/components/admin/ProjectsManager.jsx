@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Plus, Pencil, Trash2, FolderCheck, FolderX } from "lucide-react";
 import { toast } from "sonner";
-import { useProjects } from "@/components/NotificationsBell";
+import { useProjects } from "@/lib/hooks";
 import { ProjectForm } from "@/components/admin/ProjectForm";
 import { useAdminDropbox } from "@/components/admin/DropboxCard";
 import { api, errText } from "@/lib/api";

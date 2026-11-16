@@ -27,6 +27,10 @@ def read_token(request: Request) -> dict:
     header = request.headers.get("Authorization", "")
     if header.startswith("Bearer "):
         token = header[7:]
+    return decode_token(token)
+
+
+def decode_token(token) -> dict:
     if not token:
         raise HTTPException(401, "Not authenticated")
     try:

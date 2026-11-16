@@ -3,7 +3,7 @@ import { Download, Loader2 } from "lucide-react";
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { api, fileKind, fmtSize } from "@/lib/api";
 
-function Viewer({ kind, url, name }) {
+export function Viewer({ kind, url, name }) {
   if (kind === "image") return <img src={url} alt={name} className="max-h-[70vh] mx-auto rounded-xl" data-testid="preview-image" />;
   if (kind === "video") return <video src={url} controls autoPlay className="w-full max-h-[70vh] rounded-xl bg-black" data-testid="preview-video" />;
   if (kind === "audio") return <audio src={url} controls autoPlay className="w-full" data-testid="preview-audio" />;

@@ -1,6 +1,6 @@
 import { useEffect, useMemo } from "react";
 import { motion, useMotionValue, useSpring, useTransform } from "framer-motion";
-import { Swoosh, Sun, Clouds, Skyline, Mesh, Floor, Flowers } from "@/components/hero/SceneLayers";
+import { Sun, Clouds, Skyline, Mesh, Floor, Flowers } from "@/components/hero/SceneLayers";
 
 const Layer = ({ mx, my, depth, children }) => {
   const x = useTransform(mx, (v) => v * depth);
@@ -28,12 +28,12 @@ export const HeroScene = () => {
   }, [rx, ry]);
 
   const layers = useMemo(() => [
-    [4, <Sun key="s" />], [8, <Clouds key="c" />], [10, <Swoosh key="w" />], [12, <Skyline key="k" />],
+    [4, <Sun key="s" />], [12, <Skyline key="k" />], [8, <Clouds key="c" />],
     [16, <Mesh key="m" />], [6, <Floor key="f" />], [26, <Flowers key="fl" />],
   ], []);
 
   return (
-    <div className="absolute inset-0 overflow-hidden bg-gradient-to-b from-[#fbe3d2] via-[#fde9db] to-[#f6d3bd] grain" aria-hidden="true" data-testid="hero-scene">
+    <div className="absolute inset-0 overflow-hidden bg-gradient-to-b from-[#fff8f5] via-[#fff1ec] to-[#fbe1da] grain" aria-hidden="true" data-testid="hero-scene">
       {layers.map(([d, el], i) => <Layer key={i} mx={mx} my={my} depth={d}>{el}</Layer>)}
     </div>
   );

@@ -16,16 +16,16 @@ import html
 from fastapi.responses import HTMLResponse
 
 from fastapi import FastAPI, APIRouter, HTTPException, Request, Response, Depends, Query
-from motor.motor_asyncio import AsyncIOMotorClient
+from motor.motor_asyncio import AsyncIOMotorClient  # noqa: F401
 from pydantic import BaseModel, Field
 from pymongo import ASCENDING, IndexModel
 from starlette.middleware.cors import CORSMiddleware
 
 import dropbox_svc as dbx
-from auth import hash_password, verify_password, create_access_token, read_token
+from auth import hash_password, verify_password, create_access_token
+from core import client, db, now_iso, current_user, current_admin
+import collab
 
-client = AsyncIOMotorClient(os.environ['MONGO_URL'])
-db = client[os.environ['DB_NAME']]
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 
@@ -38,6 +38,9 @@ INDEXES: dict[str, list[IndexModel]] = {
                  IndexModel([("order", ASCENDING)], name="order")],
     "login_attempts": [IndexModel([("identifier", ASCENDING)], name="identifier")],
     "oauth_states": [IndexModel([("expires_at", ASCENDING)], name="expires_ttl", expireAfterSeconds=0)],
+    "canvases": [IndexModel([("id", ASCENDING)], name="id", unique=True), IndexModel([("world_slug", ASCENDING)], name="world")],
+    "lyrics": [IndexModel([("id", ASCENDING)], name="id", unique=True), IndexModel([("world_slug", ASCENDING)], name="world")],
+    "lyric_versions": [IndexModel([("lyric_id", ASCENDING), ("created_at", ASCENDING)], name="lyric_created")],
 }
 
 
@@ -52,18 +55,6 @@ async def ensure_indexes() -> None:
 
 app = FastAPI()
 api = APIRouter(prefix="/api")
-
-
-def now_iso():
-    return datetime.now(timezone.utc).isoformat()
-
-
-async def current_admin(request: Request) -> dict:
-    payload = read_token(request)
-    user = await db.users.find_one({"id": payload["sub"]}, {"_id": 0, "password_hash": 0})
-    if not user or user.get("role") != "admin":
-        raise HTTPException(403, "Admin access required")
-    return user
 
 
 # ---------- Models ----------
@@ -122,7 +113,7 @@ async def logout(response: Response):
 
 
 @api.get("/auth/me")
-async def me(user: dict = Depends(current_admin)):
+async def me(user: dict = Depends(current_user)):
     return user
 
 
@@ -234,29 +225,38 @@ async def project_thumb(slug: str, path: str):
 
 # ---------- Global search ----------
 @api.get("/search")
-async def global_search(q: str = Query(min_length=1, max_length=200), category: Optional[str] = None):
-    rx = {"$regex": re.escape(q), "$options": "i"}
-    filt = {"$or": [{"title": rx}, {"subtitle": rx}, {"description": rx}, {"category": rx}]}
+async def global_search(q: str = Query("", max_length=200), category: Optional[str] = None,
+                        world: Optional[str] = None, kind: Optional[str] = None):
+    q = q.strip()
+    if not q and not kind and not world:
+        raise HTTPException(400, "Type something to search")
+    base = {"slug": world} if world else {}
     if category:
-        filt["category"] = category
-    projects = await db.projects.find(filt, {"_id": 0}).sort("order", 1).to_list(100)
+        base["category"] = category
+    projects = []
+    if q:
+        rx = {"$regex": re.escape(q), "$options": "i"}
+        filt = {**base, "$or": [{"title": rx}, {"subtitle": rx}, {"description": rx}, {"category": rx}]}
+        projects = await db.projects.find(filt, {"_id": 0}).sort("order", 1).to_list(100)
     files, files_available = [], False
     st = await dbx.status(db)
     if st["connected"]:
         files_available = True
-        mapped = await db.projects.find({"dropbox_path": {"$ne": ""}, **({"category": category} if category else {})},
+        mapped = await db.projects.find({"dropbox_path": {"$ne": ""}, **base},
                                         {"_id": 0, "slug": 1, "title": 1, "dropbox_path": 1}).to_list(100)
         c = await dbx.client(db)
 
         async def one(p):
             try:
-                return [{**f, "project_slug": p["slug"], "project_title": p["title"]}
-                        for f in await dbx.search(c, q, p["dropbox_path"], 15)]
+                found = await (dbx.search(c, q, p["dropbox_path"], 40) if q else dbx.list_recursive(c, p["dropbox_path"], 300))
+                return [{**f, "project_slug": p["slug"], "project_title": p["title"]} for f in found]
             except HTTPException:
                 return []
         for chunk in await asyncio.gather(*[one(p) for p in mapped]):
             files.extend(chunk)
-    return {"projects": projects, "files": files, "files_available": files_available}
+        if kind:
+            files = [f for f in files if f["type"] == "file" and dbx.kind_of(f.get("ext", "")) == kind]
+    return {"projects": projects, "files": files[:400], "files_available": files_available}
 
 
 # ---------- Dropbox admin ----------
@@ -316,6 +316,7 @@ async def dropbox_folders(path: str = "", _: dict = Depends(current_admin)):
 
 
 app.include_router(api)
+app.include_router(collab.router)
 
 app.add_middleware(
     CORSMiddleware,
@@ -351,11 +352,13 @@ async def seed():
 async def startup():
     await seed()
     app.state.index_task = asyncio.create_task(ensure_indexes())
+    app.state.flush_task = asyncio.create_task(collab.flush_loop())
 
 
 @app.on_event("shutdown")
 async def shutdown_db_client():
     app.state.index_task.cancel()
+    app.state.flush_task.cancel()
     with suppress(asyncio.CancelledError):
         await app.state.index_task
     client.close()

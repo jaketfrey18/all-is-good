@@ -1,21 +1,25 @@
 import "@/App.css";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { Toaster } from "@/components/ui/sonner";
 import { AuthProvider, useAuth } from "@/context/AuthContext";
 import Home from "@/pages/Home";
-import ProjectsPage from "@/pages/ProjectsPage";
-import ArchivePage from "@/pages/ArchivePage";
-import StudioPage from "@/pages/StudioPage";
-import ContactPage from "@/pages/ContactPage";
-import SearchPage from "@/pages/SearchPage";
+import MediaPage from "@/pages/MediaPage";
+import ToolsPage from "@/pages/ToolsPage";
+import CanvasPage from "@/pages/CanvasPage";
+import LyricPage from "@/pages/LyricPage";
 import Workspace from "@/pages/Workspace";
 import AdminLogin from "@/pages/AdminLogin";
 import AdminPanel from "@/pages/AdminPanel";
 
-function AdminGate() {
+const Loading = () => <div className="min-h-screen grid place-items-center font-mono text-sm bg-[#141011] text-white/60" data-testid="auth-loading">Checking session…</div>;
+
+function RequireUser({ children, admin = false }) {
   const { user } = useAuth();
-  if (user === null) return <div className="min-h-screen grid place-items-center font-mono text-sm" data-testid="auth-loading">Checking session…</div>;
-  return user ? <AdminPanel /> : <Navigate to="/admin/login" replace />;
+  const loc = useLocation();
+  if (user === null) return <Loading />;
+  if (!user) return <Navigate to={`/login?next=${encodeURIComponent(loc.pathname + loc.search)}`} replace />;
+  if (admin && user.role !== "admin") return <Navigate to="/tools" replace />;
+  return children;
 }
 
 function App() {
@@ -24,14 +28,16 @@ function App() {
       <BrowserRouter>
         <Routes>
           <Route path="/" element={<Home />} />
-          <Route path="/projects" element={<ProjectsPage />} />
-          <Route path="/archive" element={<ArchivePage />} />
-          <Route path="/studio" element={<StudioPage />} />
-          <Route path="/contact" element={<ContactPage />} />
-          <Route path="/search" element={<SearchPage />} />
+          <Route path="/media" element={<MediaPage />} />
+          <Route path="/search" element={<MediaPage />} />
           <Route path="/p/:slug" element={<Workspace />} />
+          <Route path="/tools" element={<RequireUser><ToolsPage /></RequireUser>} />
+          <Route path="/canvas/:id" element={<RequireUser><CanvasPage /></RequireUser>} />
+          <Route path="/lyrics/:id" element={<RequireUser><LyricPage /></RequireUser>} />
+          <Route path="/login" element={<AdminLogin />} />
           <Route path="/admin/login" element={<AdminLogin />} />
-          <Route path="/admin" element={<AdminGate />} />
+          <Route path="/admin" element={<RequireUser admin><AdminPanel /></RequireUser>} />
+          <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </BrowserRouter>
       <Toaster position="bottom-right" richColors />

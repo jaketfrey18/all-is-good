@@ -13,6 +13,13 @@ REQUIRED_SCOPES = {"files.metadata.read", "files.content.read"}
 _cache = {"rt": None, "client": None}
 
 IMAGE_EXT = {"jpg", "jpeg", "png", "gif", "webp", "bmp", "tiff", "tif", "heic"}
+KINDS = {"image": IMAGE_EXT | {"svg"}, "video": {"mp4", "mov", "webm", "m4v", "avi", "mkv"},
+         "audio": {"mp3", "wav", "m4a", "aac", "ogg", "flac", "aif", "aiff"}, "pdf": {"pdf"},
+         "doc": {"doc", "docx", "txt", "md", "pages", "rtf", "ppt", "pptx", "key", "xls", "xlsx", "csv"}}
+
+
+def kind_of(ext: str) -> str:
+    return next((k for k, v in KINDS.items() if ext.lower() in v), "other")
 
 
 def configured() -> bool:
@@ -93,7 +100,8 @@ async def status(db) -> dict:
     return {"configured": configured(), "connected": bool(row) and configured(),
             "account_name": row.get("account_name") if row else None,
             "account_email": row.get("account_email") if row else None,
-            "missing_scopes": sorted(REQUIRED_SCOPES - set(row.get("scopes", []))) if row and row.get("scopes") else []}
+            "missing_scopes": sorted(REQUIRED_SCOPES - set(row.get("scopes", []))) if row and row.get("scopes") else [],
+            "can_write": bool(row) and "files.content.write" in row.get("scopes", [])}
 
 
 async def client(db):
@@ -148,6 +156,25 @@ async def list_folder(c, path: str) -> list:
         items.sort(key=lambda i: (i["type"] != "folder", i["name"].lower()))
         return items
     return await asyncio.to_thread(run)
+
+
+async def list_recursive(c, root: str, limit: int = 300) -> list:
+    def run():
+        res = _call(c.files_list_folder, root, recursive=True, limit=min(limit, 2000))
+        items = [entry(x) for x in res.entries if isinstance(x, dropbox.files.FileMetadata)]
+        while res.has_more and len(items) < limit:
+            res = _call(c.files_list_folder_continue, res.cursor)
+            items += [entry(x) for x in res.entries if isinstance(x, dropbox.files.FileMetadata)]
+        return items[:limit]
+    return await asyncio.to_thread(run)
+
+
+async def upload(db, c, path: str, data: bytes) -> str:
+    row = await db.connections.find_one({"_id": "dropbox"}, {"scopes": 1})
+    if "files.content.write" not in (row or {}).get("scopes", []):
+        raise HTTPException(409, "Dropbox write permission is off. In your Dropbox app's Permissions tab tick files.content.write, click Submit, then Disconnect and Connect Dropbox again in Admin.")
+    res = await asyncio.to_thread(_call, c.files_upload, data, path, mode=dropbox.files.WriteMode.overwrite)
+    return res.path_display
 
 
 async def search(c, q: str, root: str, limit: int = 20) -> list:

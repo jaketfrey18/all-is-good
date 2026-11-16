@@ -6,15 +6,15 @@ import "swiper/css";
 import "swiper/css/effect-coverflow";
 import "swiper/css/pagination";
 
-const arrow = "absolute top-1/2 -translate-y-1/2 z-20 w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-[#3a2a26]/85 text-white grid place-items-center backdrop-blur-md shadow-xl hover:bg-[#e8262f] transition-colors duration-200";
+const arrow = "absolute top-1/2 -translate-y-1/2 z-20 w-12 h-12 sm:w-16 sm:h-16 rounded-full bg-white text-[#e0141b] grid place-items-center shadow-[0_8px_24px_-6px_rgba(120,20,10,0.45)] border border-[#f1d6cc] hover:bg-[#e0141b] hover:text-white transition-colors duration-200";
 
 export const Coverflow = ({ projects }) => {
   const navigate = useNavigate();
   const start = Math.min(2, Math.max(0, projects.length - 1));
   return (
     <div className="relative w-full" data-testid="project-carousel">
-      <button className={`cf-prev ${arrow} left-2 sm:left-10`} aria-label="Previous project" data-testid="carousel-prev-button"><ChevronLeft className="w-7 h-7" /></button>
-      <button className={`cf-next ${arrow} right-2 sm:right-10`} aria-label="Next project" data-testid="carousel-next-button"><ChevronRight className="w-7 h-7" /></button>
+      <button className={`cf-prev ${arrow} left-2 sm:left-10`} aria-label="Previous project" data-testid="carousel-prev-button"><ChevronLeft className="w-8 h-8" strokeWidth={2.6} /></button>
+      <button className={`cf-next ${arrow} right-2 sm:right-10`} aria-label="Next project" data-testid="carousel-next-button"><ChevronRight className="w-8 h-8" strokeWidth={2.6} /></button>
       <Swiper
         key={projects.map((p) => p.id).join()}
         className="coverflow !py-8 !overflow-visible"
