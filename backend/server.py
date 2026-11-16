@@ -26,6 +26,7 @@ from auth import hash_password, verify_password, create_access_token
 from core import client, db, now_iso, current_user, current_admin
 import collab
 import clips
+import sessions
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -44,6 +45,8 @@ INDEXES: dict[str, list[IndexModel]] = {
     "lyric_versions": [IndexModel([("lyric_id", ASCENDING), ("created_at", ASCENDING)], name="lyric_created")],
     "clip_projects": [IndexModel([("id", ASCENDING)], name="id", unique=True)],
     "clip_jobs": [IndexModel([("project_id", ASCENDING)], name="project")],
+    "sessions": [IndexModel([("id", ASCENDING)], name="id", unique=True), IndexModel([("world_slug", ASCENDING)], name="world")],
+    "session_files": [IndexModel([("id", ASCENDING)], name="id", unique=True), IndexModel([("session_id", ASCENDING)], name="session")],
 }
 
 
@@ -321,6 +324,7 @@ async def dropbox_folders(path: str = "", _: dict = Depends(current_admin)):
 app.include_router(api)
 app.include_router(collab.router)
 app.include_router(clips.router)
+app.include_router(sessions.router)
 
 app.add_middleware(
     CORSMiddleware,
@@ -357,6 +361,11 @@ async def startup():
     await seed()
     app.state.index_task = asyncio.create_task(ensure_indexes())
     app.state.flush_task = asyncio.create_task(collab.flush_loop())
+    await db.session_files.update_many({"status": "syncing"}, {"$set": {"status": "in_app"}})
+    try:
+        await asyncio.to_thread(sessions.init_storage)
+    except Exception as exc:
+        logger.error("Storage init failed: %s", exc)
 
 
 @app.on_event("shutdown")

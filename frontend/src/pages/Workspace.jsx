@@ -7,6 +7,7 @@ import { WorldTools } from "@/components/WorldTools";
 import { useAuth } from "@/context/AuthContext";
 import { FileBrowser } from "@/components/workspace/FileBrowser";
 import { FilePreview } from "@/components/workspace/FilePreview";
+import { GwaLanding } from "@/components/world/GwaLanding";
 import { api } from "@/lib/api";
 
 const EmptyState = ({ title, body }) => (
@@ -41,6 +42,17 @@ export default function Workspace() {
   const { user } = useAuth();
   const project = useQuery({ queryKey: ["project", slug], queryFn: async () => (await api.get(`/projects/${slug}`)).data, retry: false });
   const dbx = useQuery({ queryKey: ["dbx-status"], queryFn: async () => (await api.get("/dropbox/status")).data });
+  const files = project.data && (!project.data.dropbox_path ? (
+    <EmptyState title="No folder linked yet" body="An admin can link a Dropbox folder to this project from the admin panel." />
+  ) : dbx.data && !dbx.data.connected ? (
+    <EmptyState title="Dropbox isn't connected" body="Files will appear here once Dropbox is connected in the admin panel." />
+  ) : dbx.data ? (
+    <FileBrowser slug={slug} path={path} setPath={setPath} onOpen={setFile} />
+  ) : null);
+
+  if (slug === "gwa" && project.data) {
+    return (<><GwaLanding p={project.data} files={files} /><FilePreview slug={slug} file={file} onClose={() => setFile(null)} /></>);
+  }
 
   return (
     <div className="min-h-screen bg-[#fff8f0]" data-testid="workspace-page">
@@ -55,13 +67,7 @@ export default function Workspace() {
             {user && <WorldTools slug={slug} />}
             <section>
               <h2 className="font-display text-lg font-bold uppercase tracking-[0.2em] mb-6">Workspace files</h2>
-              {!project.data.dropbox_path ? (
-                <EmptyState title="No folder linked yet" body="An admin can link a Dropbox folder to this project from the admin panel." />
-              ) : dbx.data && !dbx.data.connected ? (
-                <EmptyState title="Dropbox isn't connected" body="Files will appear here once Dropbox is connected in the admin panel." />
-              ) : dbx.data ? (
-                <FileBrowser slug={slug} path={path} setPath={setPath} onOpen={setFile} />
-              ) : null}
+              {files}
             </section>
           </div>
         )}
