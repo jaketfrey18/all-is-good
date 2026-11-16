@@ -1,0 +1,55 @@
+{
+  "summary": "Iteration 5 tested the COOKED WORLD collaboration build end to end: homepage, Media, auth and collaborators, Tools, Canvas, Lyric Pad (real-time Yjs), versions, export, backup and access control. Backend: 12/12 new collab tests pass, covering admin users CRUD and 403s, canvases CRUD/share/presence, lyrics CRUD/share/versions/export/backup 409, canvas-inherited lyric access, WS bad-token and unshared-user rejection, and a CRDT merge of two raw pycrdt websocket clients with persistence after reconnect. The full regression suite passes after stale iteration-1 asserts were updated (49 passed, 1 skipped). Frontend: almost all requested flows work. Homepage pills are Worlds/Media/Tools; ENTER goes to /media?q=; a carousel card opens /p/<slug>. Media lists 74 videos with preview, collapse toggle, chips and world filter. A collaborator created in the Admin UI lands on /tools and is blocked from /admin. On Canvas: a new canvas is blank; note, frame, drawer, HTML5 drag-and-drop and drawer-add work; image thumbnails load; video plays; the context bar shows Preview/Download/Delete; move, resize, undo/redo, group, link edge, zoom and fit work; reload restores everything exactly; world-selector and canvas-new work. Lyric card, expand to focus overlay and collapse work. REAL-TIME: admin and collaborator in two separate browser contexts saw each other's typing live. Simultaneous typing at the same caret position (8 X + 8 Y) merged with no loss, and both docs ended identical. Presence avatars and remote cursor labels show, content persists after reloading both, and an outsider sees 'This lyric document isn't shared with you.' Version save and restore, .txt export and the Dropbox backup 409 toast about files.content.write all work. ONE HIGH-PRIORITY BUG: concurrent edits to a shared canvas lose data (last write wins).",
+  "backend_issues": {
+    "critical": [
+      {"endpoint": "PUT /api/canvases/{id} (with frontend useCanvasDoc)", "issue": "Shared canvases are not synced between users, and every change PUTs the whole items/edges/viewport arrays (last write wins). Reproduced: admin adds a note (server items=1); the collaborator, whose stale tab shows 0 items, clicks zoom-in; the server ends with items=0 and admin's note is silently lost. Even pan/zoom wipes other users' work because viewport is stored in the shared doc.", "priority": "HIGH"}
+    ],
+    "minor": [
+      {"endpoint": "DELETE /api/canvases/{id}", "issue": "Lyric docs attached to the canvas (canvas_id) are left orphaned. Observed lyric 79ed9b30 pointing at deleted canvas 851e10e4."},
+      {"endpoint": "DELETE /api/admin/users/{id}", "issue": "Canvases and lyrics owned by the deleted collaborator stay behind with an owner_id that no longer exists."},
+      {"endpoint": "GET /api/users", "issue": "Any collaborator can list every user's email. Consider limiting it to admin, or returning name/color only."},
+      {"endpoint": "PUT /api/canvases/{id}/share, PUT /api/lyrics/{id}/share", "issue": "Any user with access, not only the owner or admin, can change the share list (including removing others)."},
+      {"endpoint": "GET /api/search?q=wba", "issue": "Returns no project, because slug is not in the searched fields (title is 'Wealth Builders Assocation' — note the typo in the user data)."},
+      {"endpoint": "lyrics.text mirror", "issue": "The text used by export/backup is only updated by a client PATCH debounced to 1.5s, sent by whoever typed. Closing the tab quickly leaves it stale. Deriving the text server-side from the Yjs doc in persist() would be more robust."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "NoteBody (canvas/Bodies.jsx)", "issue": "The textarea stops pointerdown propagation, so with the link tool (or for selection) clicking a note's body does nothing. Only the header works, so linking from a note body silently fails.", "selector": "[data-testid=canvas-note-input]", "priority": "MEDIUM"},
+      {"component": "LyricProvider (lyrics/provider.js)", "issue": "Reconnects forever when the server rejects the socket (4401/403), e.g. after the doc is deleted or unshared. Backend logs showed repeated 403 WS attempts. Stop retrying on code 4401 or after the REST read returns 404.", "selector": "n/a", "priority": "MEDIUM"},
+      {"component": "LyricEditor", "issue": "A lyric card whose doc was deleted shows 'This lyric document isn't shared with you.', which is misleading. It should say the doc was removed.", "selector": "[data-testid=lyric-no-access]", "priority": "LOW"},
+      {"component": "Canvas zoom", "issue": "A single ctrl+wheel (deltaY -300) jumps zoom from 142% to 301%, which is too sensitive.", "selector": "[data-testid=canvas-zoom-level]", "priority": "LOW"}
+    ],
+    "integration_issues": [
+      {"flow": "Shared canvas multi-user", "issue": "There is no live sync or polling of canvas items, so the collaborator never sees the admin's new items until reload, and stale saves overwrite them (see backend critical).", "affected_selectors": ["[data-testid=canvas-stage]"]}
+    ],
+    "design_issues": [
+      {"screen": "Media page", "issues": ["The world filter is a native <select>, not a shadcn Select, and its dropdown is unstyled", "Zero results show an empty list with no empty-state message", "The previous file preview (still playing video) stays after switching type chip"]},
+      {"screen": "Homepage", "issues": ["The search placeholder is low-contrast over the red sun (desktop and mobile)", "On light pages the red divider next to the logo stands alone because the wordmark only renders on dark pages"]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_collab_api.py", "/app/backend/tests/test_cooked_world_api.py", "/app/test_reports/pytest/pytest_results.xml", "/app/test_reports/pytest/pytest_collab.xml"],
+  "action_items": [
+    "HIGH: Fix the last-write-wins data loss on shared canvases. (a) Move viewport to per-user state (localStorage, or viewports[user_id]) and never PUT items/edges when only the viewport changed. (b) Add optimistic concurrency (send updated_at; the server returns 409 if stale, then the client refetches and merges), or item-level patch ops, or put canvas items in a Yjs doc like the lyrics. (c) Poll or push canvas changes so collaborators see each other's edits.",
+    "Let note body clicks select the note and count as a link endpoint (handle the link tool before stopPropagation in NoteBody, or call onItemDown).",
+    "Stop LyricProvider reconnect attempts on rejection (close code 4401/403).",
+    "Delete or detach a canvas's lyric docs on canvas delete; handle content owned by a deleted collaborator.",
+    "Optional: restrict share edits to owner/admin; hide emails in GET /api/users for collaborators; include slug in global search; derive lyrics.text server-side from the Yjs doc."
+  ],
+  "critical_code_review_comments": [
+    "collab.py lyric_socket: auth and permission run before accept, and closing with 4401 shows up as an HTTP 403 handshake reject (correct). Room persistence (flush every 1.5s plus on disconnect) works and was verified across reconnect.",
+    "collab.py lyric_socket: the access check happens only at connect. If a user is unshared while connected they can keep editing until they disconnect.",
+    "useCanvasDoc: the full-document PUT debounced at 700ms has no version check, which is the root cause of the data loss.",
+    "VersionsPanel restore uses editor.commands.setContent, which syncs to all peers through Yjs (verified). It saves a 'Before restore' version first (verified, count went 2 to 3).",
+    "ShareDialog, the Admin collaborators form and canvas-header dropdowns all have good data-testid coverage."
+  ],
+  "updated_files": ["/app/backend/tests/test_collab_api.py (new)", "/app/backend/tests/test_cooked_world_api.py (stale asserts: titles 'Yakshaloka US', search q='' 400, no-folder project now rileys-magical-meals, search 'Wealth', files_available True)", "/app/backend/tests/test_dropbox_oauth_scopes.py", "/app/backend/tests/test_dropbox_oauth_preflight.py (connected is now True)"],
+  "success_rate": {"backend": "100% (12/12 collab + 49 regression passed)", "frontend": "~90% (all requested flows pass; shared canvas concurrent-edit data loss and note-body link issue)"},
+  "test_credentials": "Admin allisgoodworld@yahoo.com / CookedWorld#2026 (from /app/memory/test_credentials.md), with no failed logins. Created test_collab_ui_4689@example.com and test_outsider_ui_77@example.com (TestPass#123); both deleted. bcrypt $2b$, httpOnly Secure cookie, and CORS (rejects a foreign origin, allows credentials) all verified.",
+  "seed_data_creation": "All created records were deleted: TEST_ collaborators, TEST_ canvases and the TEST_realtime lyric. Note: another concurrent actor deleted several of my test canvases and lyrics mid-run (bfe4277e, 25a54cda, f40271ce, 8ce0b852 and lyrics 850ed799, 78e26620). I deleted the main agent's orphaned smoke lyric 79ed9b30 (its canvas 851e10e4 was already gone). Lyric 28335f32 'Untitled lyrics' (gwa, created 01:08) is not mine and was left in place. No Dropbox writes or deletes; Dropbox was not disconnected.",
+  "retest_needed": true,
+  "should_main_agent_self_test": false,
+  "flaky_tests": ["test_cooked_world_api.py::TestAuth::test_bruteforce_lockout failed once under xdist -n 2 and passes serially (-n 0)", "Versions panel: in one of two UI runs the list didn't show the newly saved version, although the API had it; it worked on retry. Possibly a harness dialog timing issue."],
+  "context_for_next_testing_agent": "Run pytest /app/backend/tests/test_collab_api.py -n 0, a self-contained collab flow with cleanup. To retest the HIGH bug: share a canvas with a collaborator, open it in two contexts, have admin add a note (wait ~2s for the save), have the collaborator click canvas-zoom-in, then GET /api/canvases/{id}; items should still include the note. For real-time lyric checks, strip .collaboration-cursor__caret before comparing text. GWA has only audio files; Jasmin's Journey root has 2 mp4s; WBA has images (search 'Claude' in the drawer). Clip Studio is not built.",
+  "rca of the issue": "Shared canvas data loss. Root cause: useCanvasDoc keeps a local copy loaded once and auto-PUTs {name, items, edges, viewport} whenever its local key changes. viewport is part of that key, so a stale client's pan/zoom sends its stale items array and overwrites newer server items. There is no updated_at or version check, and no polling or socket for canvases. Repro: both users open /canvas/<id>; admin adds a note (server has 1 item); the collaborator clicks zoom-in; 700ms later the PUT leaves 0 items on the server. Fix: per-user viewport, no item PUT on viewport-only change, optimistic concurrency, and live sync."
+}

@@ -46,7 +46,7 @@ export default function MediaPage() {
   const [open, setOpen] = useState(true);
   const [sel, setSel] = useState(null);
   const { data: worlds = [] } = useProjects();
-  const set = (k, v) => { const n = Object.fromEntries(params); if (v) n[k] = v; else delete n[k]; setParams(n); };
+  const set = (k, v) => { const n = Object.fromEntries(params); if (v) n[k] = v; else delete n[k]; setSel(null); setParams(n); };
   const enabled = !!(q || kind || world);
   const res = useQuery({ queryKey: ["search", q, kind, world], enabled, queryFn: async () => (await api.get("/search", { params: { q, kind: kind || undefined, world: world || undefined } })).data });
   const files = res.data?.files || [];
@@ -75,6 +75,7 @@ export default function MediaPage() {
             <div className="flex-1 overflow-y-auto p-2 space-y-1">
               {res.data && !res.data.files_available && <p className="p-3 text-sm text-white/50">Dropbox isn't connected.</p>}
               {files.map((f) => <Row key={f.project_slug + f.path} f={f} active={sel?.path === f.path} onClick={() => (f.type === "folder" ? set("q", f.name) : setSel(f))} />)}
+              {res.data?.files_available && !files.length && <p className="p-3 text-sm text-white/50" data-testid="media-no-results">No files match.</p>}
             </div>
           )}
         </aside>

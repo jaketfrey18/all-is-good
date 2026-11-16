@@ -52,7 +52,7 @@ export function useStage(cv, stageRef) {
       const scrollable = e.target.closest?.("[data-scrollable]");
       if (scrollable && !e.ctrlKey && !e.metaKey) return;
       e.preventDefault();
-      if (e.ctrlKey || e.metaKey) zoomAt(Math.exp(-e.deltaY * 0.0025), e.clientX, e.clientY);
+      if (e.ctrlKey || e.metaKey) zoomAt(Math.exp(-Math.max(-60, Math.min(60, e.deltaY)) * 0.0025), e.clientX, e.clientY);
       else { const v = vpRef.current; setVp({ ...v, x: v.x - e.deltaX, y: v.y - e.deltaY }); }
     };
     el.addEventListener("wheel", onWheel, { passive: false });

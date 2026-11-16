@@ -77,7 +77,7 @@ export const LyricEditor = ({ lyricId, mode = "full", onCollapse }) => {
   useEffect(() => {
     api.get(`/lyrics/${lyricId}`).then((r) => setMeta(r.data)).catch(() => setError(true));
   }, [lyricId]);
-  if (error) return <div className="p-6 text-sm text-white/60" data-testid="lyric-no-access">This lyric document isn't shared with you.</div>;
+  if (error) return <div className="p-6 text-sm text-white/60" data-testid="lyric-no-access">This lyric document was removed or isn't shared with you.</div>;
   if (!provider || !meta) return <div className="h-full grid place-items-center"><Loader2 className="w-6 h-6 animate-spin text-[#ff4757]" /></div>;
   return <Editor key={lyricId} lyricId={lyricId} provider={provider} mode={mode} meta={meta} onCollapse={onCollapse} onMetaChange={setMeta} />;
 };

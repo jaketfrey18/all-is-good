@@ -6,9 +6,10 @@ import { TOKEN_KEY } from "@/lib/api";
 const WS_BASE = process.env.REACT_APP_BACKEND_URL.replace(/^http/, "ws");
 const UPDATE = 0, AWARENESS = 1, LEAVE = 2;
 
-class LyricProvider {
-  constructor(id) {
-    this.id = id;
+class SyncProvider {
+  constructor(path) {
+    this.path = path;
+    this.failed = 0;
     this.doc = new Y.Doc();
     this.awareness = new Awareness(this.doc);
     this.status = "connecting";
@@ -28,10 +29,13 @@ class LyricProvider {
 
   connect() {
     const token = encodeURIComponent(localStorage.getItem(TOKEN_KEY) || "");
-    const ws = new WebSocket(`${WS_BASE}/api/ws/lyrics/${this.id}?token=${token}&cid=${this.doc.clientID}`);
+    const ws = new WebSocket(`${WS_BASE}/api/ws/${this.path}?token=${token}&cid=${this.doc.clientID}`);
     ws.binaryType = "arraybuffer";
     this.ws = ws;
+    let opened = false;
     ws.onopen = () => {
+      opened = true;
+      this.failed = 0;
       this.retry = 0;
       this.send(UPDATE, Y.encodeStateAsUpdate(this.doc));
       this.send(AWARENESS, encodeAwarenessUpdate(this.awareness, [this.doc.clientID]));
@@ -48,6 +52,8 @@ class LyricProvider {
     };
     ws.onclose = () => {
       if (this.closed) return;
+      if (!opened) this.failed += 1;
+      if (this.failed >= 3) { this.setStatus("denied"); return; }
       this.setStatus("offline");
       this.retry += 1;
       setTimeout(() => !this.closed && this.connect(), Math.min(8000, 800 * this.retry));
@@ -74,7 +80,7 @@ const cache = new Map();
 
 function acquire(id) {
   let e = cache.get(id);
-  if (!e) { e = { p: new LyricProvider(id), n: 0 }; cache.set(id, e); }
+  if (!e) { e = { p: new SyncProvider(id), n: 0 }; cache.set(id, e); }
   e.n += 1;
   return e.p;
 }
@@ -86,15 +92,17 @@ function release(id) {
   setTimeout(() => { if (e.n <= 0 && cache.get(id) === e) { e.p.destroy(); cache.delete(id); } }, 3000);
 }
 
-export function useLyricProvider(id) {
+export function useSyncProvider(path) {
   const [p, setP] = useState(null);
   useEffect(() => {
-    const pr = acquire(id);
+    const pr = acquire(path);
     setP(pr);
-    return () => release(id);
-  }, [id]);
+    return () => release(path);
+  }, [path]);
   return p;
 }
+
+export const useLyricProvider = (id) => useSyncProvider(`lyrics/${id}`);
 
 export function useProviderState(p) {
   const [, force] = useReducer((x) => x + 1, 0);

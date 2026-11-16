@@ -81,10 +81,9 @@ export function useCanvasActions({ cv, stage, stageRef, setSel }) {
     const z = stage.vp.zoom;
     const sx = e.clientX, sy = e.clientY;
     const orig = Object.fromEntries(snap.items.filter((i) => ids.includes(i.id)).map((i) => [i.id, i]));
-    let moved = false;
     const move = (ev) => {
       const dx = (ev.clientX - sx) / z, dy = (ev.clientY - sy) / z;
-      if (Math.abs(dx) + Math.abs(dy) > 1) moved = true;
+      if (Math.abs(dx) + Math.abs(dy) < 1) return;
       cv.patch((s) => ({
         items: s.items.map((i) => {
           const o = orig[i.id];
@@ -96,7 +95,7 @@ export function useCanvasActions({ cv, stage, stageRef, setSel }) {
     const up = () => {
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
-      if (moved) cv.pushHistory(snap);
+      cv.pushHistory();
     };
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up);

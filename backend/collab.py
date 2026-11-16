@@ -76,7 +76,7 @@ def visible_filter(user: dict) -> dict:
 
 
 async def get_canvas(cid: str, user: dict) -> dict:
-    c = await db.canvases.find_one({"id": cid, **visible_filter(user)}, {"_id": 0})
+    c = await db.canvases.find_one({"id": cid, **visible_filter(user)}, {"_id": 0, "state": 0})
     if not c:
         raise HTTPException(404, "Canvas not found")
     return c
@@ -318,33 +318,34 @@ ROOMS: dict = {}
 ROOM_LOCK = asyncio.Lock()
 
 
-async def open_room(lid: str) -> Room:
+async def open_room(key: tuple) -> Room:
+    coll, rid = key
     async with ROOM_LOCK:
-        if lid not in ROOMS:
+        if key not in ROOMS:
             doc = Doc()
-            row = await db.lyrics.find_one({"id": lid}, {"state": 1})
+            row = await db[coll].find_one({"id": rid}, {"state": 1})
             if row and row.get("state"):
                 doc.apply_update(bytes(row["state"]))
-            ROOMS[lid] = Room(doc)
-        return ROOMS[lid]
+            ROOMS[key] = Room(doc)
+        return ROOMS[key]
 
 
-async def persist(lid: str, room: Room):
+async def persist(key: tuple, room: Room):
     if room.dirty:
         room.dirty = False
-        await db.lyrics.update_one({"id": lid}, {"$set": {"state": Binary(room.doc.get_update()), "updated_at": now_iso()}})
+        await db[key[0]].update_one({"id": key[1]}, {"$set": {"state": Binary(room.doc.get_update()), "updated_at": now_iso()}})
 
 
 async def flush_loop():
     while True:
         await asyncio.sleep(1.5)
-        for lid, room in list(ROOMS.items()):
+        for key, room in list(ROOMS.items()):
             try:
-                await persist(lid, room)
+                await persist(key, room)
                 if not room.clients:
-                    ROOMS.pop(lid, None)
+                    ROOMS.pop(key, None)
             except Exception as exc:
-                logger.error("persist %s: %s", lid, exc)
+                logger.error("persist %s: %s", key, exc)
 
 
 async def broadcast(room: Room, sender, data: bytes):
@@ -356,18 +357,36 @@ async def broadcast(room: Room, sender, data: bytes):
                 room.clients.pop(ws, None)
 
 
+async def socket_auth(token: str) -> dict:
+    user = await user_by_id(decode_token(token)["sub"])
+    if not user:
+        raise HTTPException(401)
+    return user
+
+
 @router.websocket("/ws/lyrics/{lid}")
 async def lyric_socket(websocket: WebSocket, lid: str, token: str = "", cid: str = ""):
     try:
-        user = await user_by_id(decode_token(token)["sub"])
-        if not user:
-            raise HTTPException(401)
-        await get_lyric(lid, user)
+        await get_lyric(lid, await socket_auth(token))
     except HTTPException:
         await websocket.close(code=4401)
         return
+    await run_room(websocket, ("lyrics", lid), cid)
+
+
+@router.websocket("/ws/canvas/{cid_}")
+async def canvas_socket(websocket: WebSocket, cid_: str, token: str = "", cid: str = ""):
+    try:
+        await get_canvas(cid_, await socket_auth(token))
+    except HTTPException:
+        await websocket.close(code=4401)
+        return
+    await run_room(websocket, ("canvases", cid_), cid)
+
+
+async def run_room(websocket: WebSocket, key: tuple, cid: str):
     await websocket.accept()
-    room = await open_room(lid)
+    room = await open_room(key)
     room.clients[websocket] = cid
     await websocket.send_bytes(bytes([MSG_UPDATE]) + room.doc.get_update())
     for aw in list(room.aw.values()):
@@ -392,4 +411,4 @@ async def lyric_socket(websocket: WebSocket, lid: str, token: str = "", cid: str
         room.aw.pop(websocket, None)
         if cid:
             await broadcast(room, websocket, bytes([MSG_LEAVE]) + cid.encode())
-        await persist(lid, room)
+        await persist(key, room)

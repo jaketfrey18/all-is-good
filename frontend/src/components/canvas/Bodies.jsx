@@ -7,7 +7,6 @@ export const NoteBody = ({ item, onText }) => (
   <textarea
     value={item.data.text || ""}
     onChange={(e) => onText(e.target.value)}
-    onPointerDown={(e) => e.stopPropagation()}
     placeholder="Type a note…"
     data-scrollable="true"
     className="w-full h-full resize-none bg-transparent outline-none p-3 text-[15px] leading-relaxed text-white/90 placeholder:text-white/25"

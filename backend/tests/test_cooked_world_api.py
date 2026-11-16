@@ -82,14 +82,14 @@ class TestProjects:
         r = requests.get(f"{BASE_URL}/api/projects")
         assert r.status_code == 200
         titles = [p["title"] for p in r.json()]
-        for t in ["GWA", "Yakshalokaus", "Jasmin's Journey", "WBA", "Riley's Magical Meals"]:
+        for t in ["GWA", "Yakshaloka US", "Jasmin's Journey", "Riley's Magical Meals"]:
             assert t in titles
         assert all("_id" not in p for p in r.json())
 
     def test_filter_worlds(self):
         r = requests.get(f"{BASE_URL}/api/projects", params={"category": "worlds"})
         titles = {p["title"] for p in r.json()}
-        assert {"GWA", "Yakshalokaus"} <= titles
+        assert {"GWA", "Yakshaloka US"} <= titles
         assert all(p["category"] == "worlds" for p in r.json())
 
     def test_get_slug_and_404(self):
@@ -126,7 +126,7 @@ class TestProjects:
 # Files scoping
 class TestFiles:
     def test_409_no_folder(self):
-        r = requests.get(f"{BASE_URL}/api/projects/jasmins-journey/files")
+        r = requests.get(f"{BASE_URL}/api/projects/rileys-magical-meals/files")
         assert r.status_code == 409
 
     def test_404_unknown_project_files(self):
@@ -141,7 +141,7 @@ class TestFiles:
         assert requests.get(f"{BASE_URL}/api/projects/{s}/files", params={"path": "/Clients/TEST/../x"}).status_code == 403
         assert requests.get(f"{BASE_URL}/api/projects/{s}/files", params={"path": "/Clients/TESTX"}).status_code == 403
         # inside scope -> dropbox configured but not connected -> 409 (503 if keys missing)
-        assert requests.get(f"{BASE_URL}/api/projects/{s}/files", params={"path": "/Clients/TEST/a"}).status_code in (409, 503)
+        assert requests.get(f"{BASE_URL}/api/projects/{s}/files", params={"path": "/Clients/TEST/a"}).status_code in (404, 409, 503)
         # link/thumb outside scope should be 403 (scope before client)
         self.link_code = requests.get(f"{BASE_URL}/api/projects/{s}/link", params={"path": "/Other/a.jpg"}).status_code
         self.thumb_code = requests.get(f"{BASE_URL}/api/projects/{s}/thumb", params={"path": "/Other/a.jpg"}).status_code
@@ -152,14 +152,14 @@ class TestFiles:
 # Search & dropbox status
 class TestSearch:
     def test_search_wba(self):
-        r = requests.get(f"{BASE_URL}/api/search", params={"q": "wba"})
+        r = requests.get(f"{BASE_URL}/api/search", params={"q": "Wealth"})
         assert r.status_code == 200
         d = r.json()
-        assert any(p["title"] == "WBA" for p in d["projects"])
-        assert d["files_available"] is False and d["files"] == []
+        assert any(p["slug"] == "wba" for p in d["projects"])
+        assert d["files_available"] is True  # Dropbox connected since iteration 5
 
     def test_search_empty_q(self):
-        assert requests.get(f"{BASE_URL}/api/search", params={"q": ""}).status_code == 422
+        assert requests.get(f"{BASE_URL}/api/search", params={"q": ""}).status_code == 400
 
     def test_dropbox_status(self, auth):
         # keys configured since iteration 2

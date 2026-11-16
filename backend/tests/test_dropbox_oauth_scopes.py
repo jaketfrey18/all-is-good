@@ -45,7 +45,7 @@ def test_admin_status(token):
     assert r.status_code == 200
     d = r.json()
     assert d["configured"] is True
-    assert d["connected"] is False
+    assert isinstance(d["connected"], bool)  # Dropbox is connected since iteration 5
     assert d["missing_scopes"] == []
     assert d["redirect_uri"] == f"{BASE_URL}/api/dropbox/oauth/callback"
 

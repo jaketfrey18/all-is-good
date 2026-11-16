@@ -18,7 +18,7 @@ export const Peers = ({ peers, me }) => (
   </div>
 );
 
-const STATUS = { online: ["bg-emerald-400", "Live"], connecting: ["bg-amber-400", "Connecting"], offline: ["bg-[#ff4757]", "Offline — edits kept, will sync"] };
+const STATUS = { online: ["bg-emerald-400", "Live"], connecting: ["bg-amber-400", "Connecting"], offline: ["bg-[#ff4757]", "Offline — edits kept, will sync"], denied: ["bg-[#ff4757]", "No access"] };
 
 function TitleInput({ lyricId, meta, onMetaChange }) {
   const [title, setTitle] = useState(meta.title);

@@ -17,7 +17,7 @@ export const SearchBar = ({ initial = "", dark = false, onSearch }) => {
       <span className={`mx-4 sm:mx-5 w-[2px] h-8 rounded-full shrink-0 ${dark ? "bg-white/40" : "bg-[#1d1414]/60"}`} />
       <input value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search the Cooked World" data-testid="search-input"
         placeholder="worlds, files, types, folders"
-        className={`flex-1 min-w-0 bg-transparent outline-none text-base sm:text-xl font-medium ${dark ? "text-white placeholder:text-white/30" : "text-[#1d1414] placeholder:text-[#1d1414]/35"}`} />
+        className={`flex-1 min-w-0 bg-transparent outline-none text-base sm:text-xl font-medium ${dark ? "text-white placeholder:text-white/30" : "text-[#1d1414] placeholder:text-[#1d1414]/60"}`} />
       <button type="submit" data-testid="search-enter-button"
         className="shrink-0 ml-2 inline-flex items-center gap-2 rounded-full bg-gradient-to-b from-[#ff2e2e] to-[#d40d12] text-white font-extrabold tracking-wide px-4 sm:px-7 h-11 sm:h-14 shadow-[0_10px_24px_-8px_rgba(224,20,27,0.9)] hover:brightness-110 active:scale-95 transition-[filter,transform] duration-150">
         <span className="hidden sm:inline text-lg">ENTER</span><CornerDownLeft className="w-5 h-5" />
