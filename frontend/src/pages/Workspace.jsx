@@ -42,7 +42,9 @@ export default function Workspace() {
   const { user } = useAuth();
   const project = useQuery({ queryKey: ["project", slug], queryFn: async () => (await api.get(`/projects/${slug}`)).data, retry: false });
   const dbx = useQuery({ queryKey: ["dbx-status"], queryFn: async () => (await api.get("/dropbox/status")).data });
-  const files = project.data && (!project.data.dropbox_path ? (
+  const files = project.data && (!user ? (
+    <EmptyState title="Members only" body="Sign in as a member of this World to see its files." />
+  ) : !project.data.dropbox_path ? (
     <EmptyState title="No folder linked yet" body="An admin can link a Dropbox folder to this project from the admin panel." />
   ) : dbx.data && !dbx.data.connected ? (
     <EmptyState title="Dropbox isn't connected" body="Files will appear here once Dropbox is connected in the admin panel." />

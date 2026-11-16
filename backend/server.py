@@ -23,10 +23,11 @@ from starlette.middleware.cors import CORSMiddleware
 
 import dropbox_svc as dbx
 from auth import hash_password, verify_password, create_access_token
-from core import client, db, now_iso, current_user, current_admin
+from core import client, db, now_iso, current_user, current_admin, optional_user, member_slugs, require_member
 import collab
 import clips
 import sessions
+import assets
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -47,6 +48,8 @@ INDEXES: dict[str, list[IndexModel]] = {
     "clip_jobs": [IndexModel([("project_id", ASCENDING)], name="project")],
     "sessions": [IndexModel([("id", ASCENDING)], name="id", unique=True), IndexModel([("world_slug", ASCENDING)], name="world")],
     "session_files": [IndexModel([("id", ASCENDING)], name="id", unique=True), IndexModel([("session_id", ASCENDING)], name="session")],
+    "assets": [IndexModel([("id", ASCENDING)], name="id", unique=True), IndexModel([("world_slug", ASCENDING)], name="world")],
+    "file_meta": [IndexModel([("world_slug", ASCENDING), ("path_lower", ASCENDING)], name="world_path", unique=True)],
 }
 
 
@@ -182,11 +185,9 @@ async def delete_project(pid: str, _: dict = Depends(current_admin)):
     return {"ok": True}
 
 
-# ---------- Project files (public, scoped to mapped folder) ----------
-async def _project_root(slug: str) -> str:
-    p = await db.projects.find_one({"slug": slug}, {"_id": 0, "dropbox_path": 1})
-    if not p:
-        raise HTTPException(404, "Project not found")
+# ---------- Project files (members only, scoped to mapped folder) ----------
+async def _project_root(slug: str, user) -> str:
+    p = await require_member(slug, user)
     if not p.get("dropbox_path"):
         raise HTTPException(409, "No Dropbox folder linked to this project yet")
     return p["dropbox_path"]
@@ -200,41 +201,65 @@ def _scoped(root: str, path: Optional[str]) -> str:
 
 
 @api.get("/projects/{slug}/files")
-async def project_files(slug: str, path: Optional[str] = None):
-    root = await _project_root(slug)
+async def project_files(slug: str, path: Optional[str] = None, user: dict = Depends(current_user)):
+    root = await _project_root(slug, user)
     path = _scoped(root, path)
     c = await dbx.client(db)
     return {"root": root, "path": path, "items": await dbx.list_folder(c, path)}
 
 
 @api.get("/projects/{slug}/search")
-async def project_search(slug: str, q: str = Query(min_length=1, max_length=200)):
-    root = await _project_root(slug)
+async def project_search(slug: str, q: str = Query(min_length=1, max_length=200), user: dict = Depends(current_user)):
+    root = await _project_root(slug, user)
     c = await dbx.client(db)
     return {"items": await dbx.search(c, q, root, 50)}
 
 
 @api.get("/projects/{slug}/link")
-async def project_link(slug: str, path: str):
-    path = _scoped(await _project_root(slug), path)
+async def project_link(slug: str, path: str, user: dict = Depends(current_user)):
+    path = _scoped(await _project_root(slug, user), path)
     c = await dbx.client(db)
     return {"url": await dbx.temp_link(c, path)}
 
 
 @api.get("/projects/{slug}/thumb")
-async def project_thumb(slug: str, path: str):
-    path = _scoped(await _project_root(slug), path)
+async def project_thumb(slug: str, path: str, user: dict = Depends(current_user)):
+    path = _scoped(await _project_root(slug, user), path)
     c = await dbx.client(db)
     data = await dbx.thumbnail(c, path)
-    return Response(content=data, media_type="image/jpeg", headers={"Cache-Control": "public, max-age=3600"})
+    return Response(content=data, media_type="image/jpeg", headers={"Cache-Control": "private, max-age=3600"})
+
+
+@api.get("/worlds/mine")
+async def my_worlds(user: dict = Depends(current_user)):
+    return await member_slugs(user)
+
+
+@api.get("/admin/world-members")
+async def world_members(_: dict = Depends(current_admin)):
+    return {p["slug"]: p.get("members", []) for p in await db.projects.find({}, {"_id": 0, "slug": 1, "members": 1}).to_list(500)}
+
+
+class MembersIn(BaseModel):
+    user_ids: List[str]
+
+
+@api.put("/worlds/{slug}/share")
+async def set_world_members(slug: str, body: MembersIn, _: dict = Depends(current_admin)):
+    ids = [u["id"] for u in await db.users.find({"id": {"$in": body.user_ids}}, {"_id": 0, "id": 1}).to_list(500)]
+    res = await db.projects.update_one({"slug": slug}, {"$set": {"members": ids}})
+    if not res.matched_count:
+        raise HTTPException(404, "World not found")
+    return {"shared_with": ids}
 
 
 # ---------- Global search ----------
 @api.get("/search")
 async def global_search(q: str = Query("", max_length=200), category: Optional[str] = None,
-                        world: Optional[str] = None, kind: Optional[str] = None):
+                        world: Optional[str] = None, kind: Optional[str] = None, tag: Optional[str] = None,
+                        user=Depends(optional_user)):
     q = q.strip()
-    if not q and not kind and not world:
+    if not q and not kind and not world and not tag:
         raise HTTPException(400, "Type something to search")
     base = {"slug": world} if world else {}
     if category:
@@ -245,10 +270,11 @@ async def global_search(q: str = Query("", max_length=200), category: Optional[s
         filt = {**base, "$or": [{"title": rx}, {"subtitle": rx}, {"description": rx}, {"category": rx}]}
         projects = await db.projects.find(filt, {"_id": 0}).sort("order", 1).to_list(100)
     files, files_available = [], False
+    allowed = await member_slugs(user)
     st = await dbx.status(db)
-    if st["connected"]:
+    if st["connected"] and user and not tag:
         files_available = True
-        mapped = await db.projects.find({"dropbox_path": {"$ne": ""}, **base},
+        mapped = await db.projects.find({"dropbox_path": {"$ne": ""}, "slug": {"$in": allowed}, **base},
                                         {"_id": 0, "slug": 1, "title": 1, "dropbox_path": 1}).to_list(100)
         c = await dbx.client(db)
 
@@ -262,6 +288,9 @@ async def global_search(q: str = Query("", max_length=200), category: Optional[s
             files.extend(chunk)
         if kind:
             files = [f for f in files if f["type"] == "file" and dbx.kind_of(f.get("ext", "")) == kind]
+    if user:
+        files_available = files_available or st["connected"]
+        files = await assets.augment_search(files, user, allowed, q, kind, tag, world)
     return {"projects": projects, "files": files[:400], "files_available": files_available}
 
 
@@ -325,6 +354,7 @@ app.include_router(api)
 app.include_router(collab.router)
 app.include_router(clips.router)
 app.include_router(sessions.router)
+app.include_router(assets.router)
 
 app.add_middleware(
     CORSMiddleware,

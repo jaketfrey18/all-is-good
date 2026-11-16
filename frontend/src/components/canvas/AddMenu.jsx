@@ -1,8 +1,8 @@
-import { Plus, PenLine, StickyNote, Square, FolderOpen, FileText } from "lucide-react";
+import { Plus, PenLine, StickyNote, Square, FolderOpen, FileText, Mic } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useLyrics } from "@/components/WorldLists";
 
-export const AddMenu = ({ world, onNewLyric, onOpenLyric, onNote, onFrame, onFiles, onLyricIds }) => {
+export const AddMenu = ({ world, onNewLyric, onOpenLyric, onNote, onFrame, onFiles, onLyricIds, onRecord }) => {
   const { data: lyrics = [] } = useLyrics(world);
   const available = lyrics.filter((l) => !onLyricIds.includes(l.id));
   return (
@@ -25,6 +25,7 @@ export const AddMenu = ({ world, onNewLyric, onOpenLyric, onNote, onFrame, onFil
         <DropdownMenuItem onClick={onNote} data-testid="add-note"><StickyNote className="w-4 h-4 mr-2" /> Text note</DropdownMenuItem>
         <DropdownMenuItem onClick={onFrame} data-testid="add-frame"><Square className="w-4 h-4 mr-2" /> Frame</DropdownMenuItem>
         <DropdownMenuItem onClick={onFiles} data-testid="add-files"><FolderOpen className="w-4 h-4 mr-2" /> Dropbox files</DropdownMenuItem>
+        <DropdownMenuItem onClick={onRecord} data-testid="add-record-audio"><Mic className="w-4 h-4 mr-2" /> Record tab audio</DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
   );

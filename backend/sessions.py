@@ -2,23 +2,22 @@ import asyncio
 import logging
 import os
 import re
-import tempfile
 import uuid
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Optional
 from urllib.parse import quote
 
+import dropbox
 import requests
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
-from fastapi.responses import Response
+from fastapi.responses import StreamingResponse
+from starlette.concurrency import iterate_in_threadpool
 from pydantic import BaseModel, Field
 
 import dropbox_svc as dbx
 from auth import decode_token
-from clips import upload_big
-from collab import visible_filter, require_world, is_admin
-from core import db, now_iso, current_user, user_by_id
+from collab import visible_filter, is_admin
+from core import db, now_iso, current_user, user_by_id, require_member
 
 router = APIRouter(prefix="/api")
 logger = logging.getLogger(__name__)
@@ -26,8 +25,6 @@ logger = logging.getLogger(__name__)
 STORAGE_BASE = (os.environ.get("INTEGRATION_PROXY_URL") or "").strip() or "https://integrations.emergentagent.com"
 STORAGE_URL = STORAGE_BASE.rstrip("/") + "/objstore/api/v1/storage"
 APP_NAME = "cooked-world"
-TMP = Path(tempfile.gettempdir()) / "session_uploads"
-TMP.mkdir(exist_ok=True)
 MAX_BYTES = 1024 * 1024 * 1024
 CATEGORIES = ["Audio", "Video", "Images", "Docs", "Other"]
 KIND_TO_CAT = {"audio": "Audio", "video": "Video", "image": "Images", "pdf": "Docs", "doc": "Docs"}
@@ -124,7 +121,7 @@ async def list_sessions(world: Optional[str] = None, user: dict = Depends(curren
 
 @router.post("/sessions")
 async def create_session(body: SessionIn, user: dict = Depends(current_user)):
-    world = await require_world(body.world_slug)
+    world = await require_member(body.world_slug, user)
     if not body.name.strip():
         raise HTTPException(400, "Give the session a name")
     day = datetime.now(timezone.utc).strftime("%Y-%m-%d")
@@ -165,37 +162,69 @@ async def delete_session(sid: str, user: dict = Depends(current_user)):
 
 
 # ---------- Files ----------
+async def receive_chunk(upload_id: str, index: int, total: int, file: UploadFile, user: dict) -> Optional[dict]:
+    if not re.fullmatch(r"[a-zA-Z0-9-]{8,64}", upload_id) or total < 1 or not 0 <= index < total:
+        raise HTTPException(400, "Bad upload chunk")
+    data = await file.read()
+    row = await db.upload_parts.find_one({"_id": upload_id}) if index else None
+    if index and (not row or row["owner"] != user["id"] or len(row["parts"]) != index):
+        raise HTTPException(409, "Upload got out of order. Please try again.")
+    size = (row["size"] if row else 0) + len(data)
+    if size > MAX_BYTES:
+        raise HTTPException(413, "Files can be up to 1 GB")
+    path = f"{APP_NAME}/parts/{upload_id}/{index}"
+    try:
+        res = await asyncio.to_thread(put_object, path, data, "application/octet-stream")
+    except Exception as exc:
+        logger.error("storage put failed: %s", exc)
+        raise HTTPException(502, "Couldn't store the file. Please try again.")
+    parts = (row["parts"] if row else []) + [res.get("path", path)]
+    if index < total - 1:
+        await db.upload_parts.update_one({"_id": upload_id}, {"$set": {"owner": user["id"], "parts": parts, "size": size, "created_at": now_iso()}}, upsert=True)
+        return None
+    await db.upload_parts.delete_one({"_id": upload_id})
+    return {"parts": parts, "size": size}
+
+
+def iter_parts(parts: list):
+    for p in parts:
+        yield get_object(p)
+
+
+def parts_to_dropbox(c, parts: list, dest: str) -> str:
+    if len(parts) == 1:
+        return c.files_upload(get_object(parts[0]), dest, mode=dropbox.files.WriteMode.add, autorename=True).path_display
+    first = get_object(parts[0])
+    start = c.files_upload_session_start(first)
+    cursor = dropbox.files.UploadSessionCursor(session_id=start.session_id, offset=0)
+    offset = len(first)
+    for p in parts[1:-1]:
+        chunk = get_object(p)
+        cursor.offset = offset
+        c.files_upload_session_append_v2(chunk, cursor)
+        offset += len(chunk)
+    cursor.offset = offset
+    commit = dropbox.files.CommitInfo(path=dest, mode=dropbox.files.WriteMode.add, autorename=True)
+    return c.files_upload_session_finish(get_object(parts[-1]), cursor, commit).path_display
+
+
+def disposition(name: str, attach: bool = True) -> str:
+    ascii_name = name.encode("ascii", "ignore").decode().replace('"', "") or "file"
+    return f'{"attachment" if attach else "inline"}; filename="{ascii_name}"; filename*=UTF-8\'\'{quote(name)}'
+
+
 @router.post("/sessions/{sid}/upload")
 async def upload_chunk(sid: str, upload_id: str = Form(...), index: int = Form(...), total: int = Form(...),
                        name: str = Form(...), file: UploadFile = File(...), user: dict = Depends(current_user)):
     s = await get_session(sid, user)
-    if not re.fullmatch(r"[a-zA-Z0-9-]{8,64}", upload_id) or total < 1 or not 0 <= index < total:
-        raise HTTPException(400, "Bad upload chunk")
-    part = TMP / f"{upload_id}.part"
-    if index == 0 and part.exists():
-        part.unlink()
-    with open(part, "ab") as out:
-        out.write(await file.read())
-    size = part.stat().st_size
-    if size > MAX_BYTES:
-        part.unlink()
-        raise HTTPException(413, "Files can be up to 1 GB")
-    if index < total - 1:
+    done = await receive_chunk(upload_id, index, total, file, user)
+    if not done:
         return {"received": index}
     fname = safe(name)
     ext = fname.rsplit(".", 1)[-1].lower() if "." in fname else "bin"
-    ctype = file.content_type if file.content_type and file.content_type != "application/octet-stream" else "application/octet-stream"
-    path = f"{APP_NAME}/sessions/{sid}/{uuid.uuid4()}.{ext}"
-    try:
-        with open(part, "rb") as fp:
-            res = await asyncio.to_thread(put_object, path, fp, ctype)
-    except Exception as exc:
-        logger.error("storage put failed: %s", exc)
-        raise HTTPException(502, "Couldn't store the file. Please try again.")
-    finally:
-        part.unlink(missing_ok=True)
-    doc = {"id": str(uuid.uuid4()), "session_id": sid, "world_slug": s["world_slug"], "name": fname, "ext": ext, "size": size,
-           "content_type": ctype, "category": category_for(fname), "storage_path": res.get("path", path), "status": "in_app",
+    ctype = file.content_type or "application/octet-stream"
+    doc = {"id": str(uuid.uuid4()), "session_id": sid, "world_slug": s["world_slug"], "name": fname, "ext": ext, "size": done["size"],
+           "content_type": ctype, "category": category_for(fname), "storage_parts": done["parts"], "status": "in_app",
            "dropbox_path": None, "error": None, "uploaded_by": user["id"], "is_deleted": False, "created_at": now_iso()}
     await db.session_files.insert_one(doc)
     doc.pop("_id", None)
@@ -233,10 +262,8 @@ async def download_file(fid: str, token: str = ""):
     if not user:
         raise HTTPException(404, "Not found")
     f = await get_file(fid, user)
-    data = await asyncio.to_thread(get_object, f["storage_path"])
-    ascii_name = f["name"].encode("ascii", "ignore").decode() or "file"
-    disp = f'attachment; filename="{ascii_name}"; filename*=UTF-8\'\'{quote(f["name"])}'
-    return Response(content=data, media_type=f["content_type"], headers={"Content-Disposition": disp})
+    return StreamingResponse(iterate_in_threadpool(iter_parts(f["storage_parts"])), media_type=f["content_type"],
+                             headers={"Content-Disposition": disposition(f["name"]), "Content-Length": str(f["size"])})
 
 
 async def sync_file(fid: str):
@@ -247,16 +274,13 @@ async def sync_file(fid: str):
         s = await db.sessions.find_one({"id": f["session_id"]}, {"_id": 0, "folder": 1})
         set_ = lambda **kw: db.session_files.update_one({"id": fid}, {"$set": kw})  # noqa: E731
         await set_(status="syncing", error=None)
-        tmp = TMP / f"sync-{fid}"
         try:
-            tmp.write_bytes(await asyncio.to_thread(get_object, f["storage_path"]))
-            dest = await upload_big(await dbx.client(db), tmp, f"{s['folder']}/{f['category']}/{f['name']}")
+            c = await dbx.client(db)
+            dest = await asyncio.to_thread(parts_to_dropbox, c, f["storage_parts"], f"{s['folder']}/{f['category']}/{f['name']}")
             await set_(status="in_dropbox", dropbox_path=dest, synced_at=now_iso())
         except Exception as exc:
             logger.error("session sync %s failed: %s", fid, exc)
             await set_(status="error", error=str(exc)[-300:])
-        finally:
-            tmp.unlink(missing_ok=True)
 
 
 @router.post("/sessions/{sid}/sync")

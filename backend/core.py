@@ -26,6 +26,31 @@ async def current_user(request: Request) -> dict:
     return user
 
 
+async def optional_user(request: Request):
+    try:
+        return await current_user(request)
+    except HTTPException:
+        return None
+
+
+async def member_slugs(user) -> list:
+    if not user:
+        return []
+    q = {} if user.get("role") == "admin" else {"members": user["id"]}
+    return [p["slug"] for p in await db.projects.find(q, {"_id": 0, "slug": 1}).to_list(500)]
+
+
+async def require_member(slug: str, user) -> dict:
+    p = await db.projects.find_one({"slug": slug}, {"_id": 0, "slug": 1, "title": 1, "dropbox_path": 1, "members": 1})
+    if not p:
+        raise HTTPException(404, "World not found")
+    if not user:
+        raise HTTPException(401, "Sign in to see this World's files")
+    if user.get("role") != "admin" and user["id"] not in p.get("members", []):
+        raise HTTPException(403, f"You're not a member of {p['title']}")
+    return p
+
+
 async def current_admin(request: Request) -> dict:
     user = await current_user(request)
     if user.get("role") != "admin":

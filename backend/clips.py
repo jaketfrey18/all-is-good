@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field
 
 import dropbox_svc as dbx
 from auth import decode_token
-from core import db, now_iso, current_user, user_by_id
+from core import db, now_iso, current_user, user_by_id, require_member
 from collab import visible_filter, require_world, is_admin
 
 router = APIRouter(prefix="/api")
@@ -43,7 +43,10 @@ async def get_project(pid: str, user: dict) -> dict:
     return p
 
 
-async def source_url(p: dict) -> str:
+async def source_url(p: dict, user: dict, internal: bool = False) -> str:
+    if p["source"].get("asset_id"):
+        import assets
+        return await assets.media_url(p["source"]["asset_id"], user, internal)
     world = await require_world(p["world_slug"])
     if not dbx.inside(world.get("dropbox_path", ""), p["source"]["path"]):
         raise HTTPException(403, "Source outside world folder")
@@ -52,7 +55,8 @@ async def source_url(p: dict) -> str:
 
 class ProjectIn(BaseModel):
     world_slug: str
-    path: str
+    path: Optional[str] = None
+    asset_id: Optional[str] = None
     name: Optional[str] = None
 
 
@@ -75,17 +79,23 @@ async def list_projects(world: Optional[str] = None, user: dict = Depends(curren
 
 @router.post("/clip-projects")
 async def create_project(body: ProjectIn, user: dict = Depends(current_user)):
-    world = await require_world(body.world_slug)
-    if not dbx.inside(world.get("dropbox_path", ""), body.path):
-        raise HTTPException(403, "File is outside this world's folder")
-    name = body.path.rsplit("/", 1)[-1]
-    ext = name.rsplit(".", 1)[-1].lower() if "." in name else ""
-    url = await dbx.temp_link(await dbx.client(db), body.path)
+    world = await require_member(body.world_slug, user)
+    if body.asset_id:
+        import assets
+        a = await assets.get_asset(body.asset_id, user)
+        url = await assets.media_url(a["id"], user, internal=True)
+        name, ext, src_path = a["name"] + (f".{a['ext']}" if a.get("ext") else ""), a.get("ext", ""), ""
+    else:
+        if not body.path or not dbx.inside(world.get("dropbox_path", ""), body.path):
+            raise HTTPException(403, "File is outside this world's folder")
+        name = body.path.rsplit("/", 1)[-1]
+        ext = name.rsplit(".", 1)[-1].lower() if "." in name else ""
+        url, src_path = await dbx.temp_link(await dbx.client(db), body.path), body.path
     info = await probe(url)
     if not info["duration"]:
         raise HTTPException(400, "Couldn't read this media file")
     doc = {"id": str(uuid.uuid4()), "world_slug": body.world_slug, "owner_id": user["id"], "shared_with": [],
-           "name": body.name or name.rsplit(".", 1)[0], "source": {"path": body.path, "name": name, "ext": ext, **info},
+           "name": body.name or name.rsplit(".", 1)[0], "source": {"path": src_path, "asset_id": body.asset_id, "name": name, "ext": ext, **info},
            "clips": [new_clip("Clip 1", 0, min(30.0, info["duration"]))],
            "settings": {"format": "mp4" if info["has_video"] else "mp3", "height": 1080},
            "created_at": now_iso(), "updated_at": now_iso()}
@@ -101,7 +111,7 @@ async def read_project(pid: str, user: dict = Depends(current_user)):
 
 @router.get("/clip-projects/{pid}/source")
 async def project_source(pid: str, user: dict = Depends(current_user)):
-    return {"url": await source_url(await get_project(pid, user))}
+    return {"url": await source_url(await get_project(pid, user), user)}
 
 
 @router.put("/clip-projects/{pid}")
@@ -200,7 +210,7 @@ async def run_job(job_id: str):
         try:
             clip = next(c for c in p["clips"] if c["id"] == job["clip_id"])
             await set_(status="running", progress=0)
-            url = await dbx.temp_link(await dbx.client(db), p["source"]["path"])
+            url = await source_url(p, await user_by_id(job["owner_id"]), internal=True)
             out = OUT_DIR / f"{job_id}.{job['format']}"
             cmd, total = build_cmd(url, clip, p["source"], job["format"], str(out))
             proc = await asyncio.create_subprocess_exec(*cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)

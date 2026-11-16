@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useParams, Link } from "react-router-dom";
+import { useParams, Link, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { Play, Pause, SkipBack, SkipForward, Undo2, Redo2, Loader2, ArrowLeft, Repeat } from "lucide-react";
+import { Play, Pause, SkipBack, SkipForward, Undo2, Redo2, Loader2, ArrowLeft, Repeat, Mic } from "lucide-react";
+import { toast } from "sonner";
+import { RecorderPanel } from "@/components/library/RecorderPanel";
 import { TopNav } from "@/components/TopNav";
 import { Slider } from "@/components/ui/slider";
 import { useClipProject, uid, fmtTime, clipLength } from "@/components/clip/useClipProject";
@@ -10,7 +12,7 @@ import { Timeline } from "@/components/clip/Timeline";
 import { ClipQueue } from "@/components/clip/ClipQueue";
 import { ClipInspector } from "@/components/clip/ClipInspector";
 import { ExportDialog, JobList } from "@/components/clip/ExportDialog";
-import { api } from "@/lib/api";
+import { api, errText } from "@/lib/api";
 import { useProjects } from "@/lib/hooks";
 
 const MODES = ["Clip", "Captions", "AI Assist"];
@@ -34,6 +36,11 @@ function Studio({ cp }) {
   const [zoom, setZoom] = useState(1);
   const [mode, setMode] = useState("Clip");
   const [exporting, setExporting] = useState(false);
+  const [recording, setRecording] = useState(false);
+  const navigate = useNavigate();
+  const importRecording = async (a) => {
+    try { navigate(`/studio/${(await api.post("/clip-projects", { world_slug: a.world_slug, asset_id: a.id })).data.id}`); } catch (e) { toast.error(errText(e)); }
+  };
   const clipPlay = useRef(false);
   const trimming = useRef(false);
   const { data: url } = useQuery({ queryKey: ["clip-src", p.id], queryFn: async () => (await api.get(`/clip-projects/${p.id}/source`)).data.url, staleTime: 3 * 3600 * 1000 });
@@ -111,6 +118,7 @@ function Studio({ cp }) {
           {MODES.map((m) => <button key={m} onClick={() => setMode(m)} className={`h-9 px-5 rounded-full text-sm font-bold ${mode === m ? "bg-[#e0141b] text-white" : "text-white/65 hover:text-white"}`} data-testid={`clip-mode-${m.toLowerCase().replace(" ", "-")}`}>{m}</button>)}
         </div>
         <div className="ml-auto flex items-center gap-1">
+          <button onClick={() => setRecording(true)} className="h-9 px-4 mr-2 rounded-full border border-white/15 text-white text-sm font-semibold inline-flex items-center gap-1.5 hover:border-[#ff4757]" data-testid="clip-record-audio"><Mic className="w-4 h-4 text-[#ff4757]" /> Record Audio</button>
           <button className={tb} onClick={cp.undo} disabled={!cp.canUndo} aria-label="Undo" data-testid="clip-undo"><Undo2 className="w-4 h-4" /></button>
           <button className={tb} onClick={cp.redo} disabled={!cp.canRedo} aria-label="Redo" data-testid="clip-redo"><Redo2 className="w-4 h-4" /></button>
           <span className={`ml-2 text-[11px] font-mono ${cp.saving === "error" ? "text-[#ff6b6b]" : "text-white/45"}`} data-testid={`clip-save-${cp.saving}`}>{cp.saving === "saved" ? "Saved" : cp.saving === "error" ? "Save failed" : "Saving…"}</span>
@@ -138,6 +146,7 @@ function Studio({ cp }) {
         </aside>
       </div>
       {exporting && <ExportDialog open onOpenChange={setExporting} project={p} clipIds={p.clips.filter((c) => c.selected).map((c) => c.id)} worldFolder={worlds.find((w) => w.slug === p.world_slug)?.dropbox_path} />}
+      <RecorderPanel open={recording} onOpenChange={setRecording} world={p.world_slug} onSaved={importRecording} />
     </div>
   );
 }

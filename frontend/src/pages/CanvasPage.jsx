@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { Loader2, CloudUpload } from "lucide-react";
 import { SessionDrop } from "@/components/sessions/SessionDrop";
+import { RecorderPanel } from "@/components/library/RecorderPanel";
 import { toast } from "sonner";
 import { TopNav } from "@/components/TopNav";
 import { useCanvasDoc } from "@/components/canvas/useCanvasDoc";
@@ -52,6 +53,7 @@ function Workspace({ cv }) {
   const [expanded, setExpanded] = useState(null);
   const [lyricShare, setLyricShare] = useState(null);
   const [dropOpen, setDropOpen] = useState(false);
+  const [recOpen, setRecOpen] = useState(false);
   const act = useCanvasActions({ cv, stage, stageRef, setSel });
   const navigate = useNavigate();
   useKeys({ sel, setSel, act, cv, setTool });
@@ -158,7 +160,7 @@ function Workspace({ cv }) {
       <ContextBar sel={sel} items={s.items} vp={vp} actions={actions} noteColors={NOTE_COLORS} />
       <ZoomBar zoom={vp.zoom} onUndo={cv.undo} onRedo={cv.redo} canUndo={cv.canUndo} canRedo={cv.canRedo} onZoom={stage.zoomBy} onFit={() => stage.fit(s.items)} saving={cv.saving} />
       <AddMenu world={s.world_slug} onLyricIds={s.items.filter((i) => i.type === "lyric").map((i) => i.data.lyric_id)}
-        onNewLyric={() => act.addLyric()} onOpenLyric={(l) => act.addLyric(l)} onNote={() => act.addNote()} onFrame={() => act.addFrame()} onFiles={() => setDrawer({ open: true, kind: "all" })} />
+        onNewLyric={() => act.addLyric()} onOpenLyric={(l) => act.addLyric(l)} onNote={() => act.addNote()} onFrame={() => act.addFrame()} onFiles={() => setDrawer({ open: true, kind: "all" })} onRecord={() => setRecOpen(true)} />
       {expanded && (
         <div className="absolute inset-4 sm:inset-8 z-40 rounded-3xl bg-[#1a1415]/95 backdrop-blur-xl border border-[#4a2a2a] shadow-[0_0_80px_-10px_rgba(255,71,87,0.35)] overflow-hidden" data-testid="lyric-focus-overlay" onPointerDown={(e) => e.stopPropagation()}>
           <LyricEditor lyricId={expanded.data.lyric_id} mode="full" onCollapse={() => setExpanded(null)} />
@@ -168,6 +170,7 @@ function Workspace({ cv }) {
       {lyricShare && <ShareDialog open onOpenChange={(o) => !o && setLyricShare(null)} kind="lyrics" id={lyricShare.id} ownerId={lyricShare.owner_id} sharedWith={lyricShare.shared_with || []} />}
       <button onClick={() => setDropOpen(true)} onPointerDown={(e) => e.stopPropagation()} className="absolute left-4 bottom-5 z-30 inline-flex items-center gap-2 h-12 px-5 rounded-full bg-[#1c1617]/90 backdrop-blur-xl border border-[#4a2a2a] text-white text-sm font-semibold hover:border-[#ff4757] transition-colors" data-testid="canvas-session-drop-button"><CloudUpload className="w-4 h-4 text-[#ff4757]" /> <span className="hidden sm:inline">Session Drop</span></button>
       <SessionDrop open={dropOpen} onOpenChange={setDropOpen} world={s.world_slug} />
+      <RecorderPanel open={recOpen} onOpenChange={setRecOpen} world={s.world_slug} />
     </>
   );
 }

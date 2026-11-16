@@ -1,10 +1,11 @@
 import { useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
-import { Plus, Pencil, Trash2, FolderCheck, FolderX } from "lucide-react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Plus, Pencil, Trash2, FolderCheck, FolderX, Users } from "lucide-react";
 import { toast } from "sonner";
 import { useProjects } from "@/lib/hooks";
 import { ProjectForm } from "@/components/admin/ProjectForm";
 import { useAdminDropbox } from "@/components/admin/DropboxCard";
+import { ShareDialog } from "@/components/ShareDialog";
 import { api, errText } from "@/lib/api";
 
 export const ProjectsManager = () => {
@@ -12,6 +13,8 @@ export const ProjectsManager = () => {
   const { data = [] } = useProjects();
   const { data: dbx } = useAdminDropbox();
   const [editing, setEditing] = useState(undefined);
+  const [members, setMembers] = useState(null);
+  const mem = useQuery({ queryKey: ["world-members"], queryFn: async () => (await api.get("/admin/world-members")).data });
 
   const save = async (body) => {
     try {
@@ -45,12 +48,14 @@ export const ProjectsManager = () => {
                 {p.dropbox_path ? <><FolderCheck className="w-3.5 h-3.5 text-emerald-600 shrink-0" />{p.dropbox_path}</> : <><FolderX className="w-3.5 h-3.5 text-[#e8262f] shrink-0" />No folder linked</>}
               </p>
             </div>
+            <button onClick={() => setMembers(p)} className="inline-flex items-center gap-1.5 h-9 px-3 rounded-full hover:bg-[#fbeee4] text-sm font-semibold" data-testid={`members-project-${p.slug}`}><Users className="w-4 h-4" /> {(mem.data?.[p.slug] || []).length}</button>
             <button onClick={() => setEditing(p)} className="p-2 rounded-full hover:bg-[#fbeee4]" aria-label="Edit" data-testid={`edit-project-${p.slug}`}><Pencil className="w-4 h-4" /></button>
             <button onClick={() => remove(p)} className="p-2 rounded-full hover:bg-[#fde2e2] text-[#e8262f]" aria-label="Delete" data-testid={`delete-project-${p.slug}`}><Trash2 className="w-4 h-4" /></button>
           </li>
         ))}
       </ul>
       {editing !== undefined && <ProjectForm project={editing} onClose={() => setEditing(undefined)} onSave={save} dropboxConnected={!!dbx?.connected} />}
+      {members && <ShareDialog open onOpenChange={(o) => !o && setMembers(null)} kind="worlds" id={members.slug} ownerId={null} sharedWith={mem.data?.[members.slug] || []} onSaved={() => mem.refetch()} />}
     </section>
   );
 };
